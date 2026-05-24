@@ -123,11 +123,20 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,san
 .btn-cyan:hover{background:rgba(0,212,255,0.22);}
 select,input[type=text],input[type=number],input[type=password]{background:var(--card);border:1px solid var(--border);color:var(--text);padding:3px 8px;border-radius:6px;font-size:0.72rem;outline:none;}
 select:focus,input:focus{border-color:var(--accent);}
-.stats-bar{padding:8px 16px;display:flex;gap:16px;background:var(--bg);border-bottom:1px solid var(--border);flex-wrap:wrap;align-items:center;}
-.stat{display:flex;flex-direction:column;}
-.stat-lbl{font-size:0.58rem;color:var(--muted);text-transform:uppercase;}
-.stat-val{font-size:1rem;font-weight:700;}
+.stats-bar{padding:8px 16px;display:flex;gap:8px;background:var(--bg);border-bottom:1px solid var(--border);flex-wrap:wrap;align-items:center;}
+.stat{display:flex;flex-direction:column;align-items:center;padding:5px 14px;border-radius:8px;border:1px solid transparent;min-width:64px;}
+.stat.st-stocks{background:rgba(0,212,255,0.07);border-color:rgba(0,212,255,0.22);}
+.stat.st-gainers{background:rgba(63,185,80,0.07);border-color:rgba(63,185,80,0.22);}
+.stat.st-losers{background:rgba(248,81,73,0.07);border-color:rgba(248,81,73,0.22);}
+.stat.st-alerted{background:rgba(210,153,34,0.08);border-color:rgba(210,153,34,0.28);}
+.stat-lbl{font-size:0.58rem;text-transform:uppercase;font-weight:700;letter-spacing:0.4px;}
+.stat.st-stocks .stat-lbl{color:var(--accent);}
+.stat.st-gainers .stat-lbl{color:var(--green);}
+.stat.st-losers  .stat-lbl{color:var(--red);}
+.stat.st-alerted .stat-lbl{color:var(--gold);}
+.stat-val{font-size:1rem;font-weight:800;margin-top:2px;}
 .stat-val.green{color:var(--green);}.stat-val.red{color:var(--red);}.stat-val.cyan{color:var(--accent);}
+.stat.st-alerted .stat-val{color:var(--gold);}
 .filters{padding:8px 16px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--border);}
 .search-input{background:var(--card);border:1px solid var(--border);color:var(--text);padding:5px 12px;border-radius:6px;font-size:0.75rem;flex:1;min-width:150px;max-width:300px;outline:none;}
 .filter-btn{padding:4px 12px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:0.7rem;cursor:pointer;transition:all .2s;}
@@ -339,11 +348,11 @@ td{padding:7px 12px;font-size:0.75rem;white-space:nowrap;}
   </div>
 
   <div class="stats-bar">
-    <div class="stat"><div class="stat-lbl">Stocks</div><div class="stat-val cyan" id="stStocks">0</div></div>
-    <div class="stat"><div class="stat-lbl">Gainers</div><div class="stat-val green" id="stGain">0</div></div>
-    <div class="stat"><div class="stat-lbl">Losers</div><div class="stat-val red" id="stLoss">0</div></div>
-    <div class="stat"><div class="stat-lbl">Alerted</div><div class="stat-val" id="stAlert">0</div></div>
-    <div class="stat" style="margin-left:auto"><div class="stat-lbl">Updated</div><div class="stat-val" id="stUpd" style="font-size:0.7rem;color:var(--muted)">--</div></div>
+    <div class="stat st-stocks"><div class="stat-lbl">Stocks</div><div class="stat-val cyan" id="stStocks">0</div></div>
+    <div class="stat st-gainers"><div class="stat-lbl">Gainers</div><div class="stat-val green" id="stGain">0</div></div>
+    <div class="stat st-losers"><div class="stat-lbl">Losers</div><div class="stat-val red" id="stLoss">0</div></div>
+    <div class="stat st-alerted"><div class="stat-lbl">Alerted</div><div class="stat-val" id="stAlert">0</div></div>
+    <div class="stat" style="margin-left:auto"><div class="stat-lbl" style="color:var(--muted)">Updated</div><div class="stat-val" id="stUpd" style="font-size:0.7rem;color:var(--muted)">--</div></div>
   </div>
 
   <div class="filters">
