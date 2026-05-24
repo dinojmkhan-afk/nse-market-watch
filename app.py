@@ -2,6 +2,7 @@ import datetime
 import hashlib
 import json
 import os
+import random
 import threading
 import time
 import requests
@@ -366,14 +367,28 @@ def master_clock_loop():
             print(f"[CLOCK] Error: {e}")
         time.sleep(1)  # Always runs — even after exception
 
+def _make_nse_session():
+    """Create a fresh NSE session with homepage cookie handshake."""
+    s=requests.Session()
+    try:
+        s.get("https://www.nseindia.com",headers=NSE_HEADERS,timeout=5)
+    except Exception as e:
+        print(f"[NSE] Session init warning: {e}")
+    return s
+
 def fetch_nse_loop():
     global fetch_count
     fail_count=0
+    # Persistent session — reused across poll cycles; recreated only on 403 or every 10 min
+    nse_session=_make_nse_session()
+    session_born=time.time()
     for attempt in range(5):
         try:
-            s=requests.Session()
-            s.get("https://www.nseindia.com",headers=NSE_HEADERS,timeout=5)
-            r=s.get("https://www.nseindia.com/api/equity-stockIndices?index=NIFTY%20500",headers=NSE_HEADERS,timeout=15)
+            r=nse_session.get("https://www.nseindia.com/api/equity-stockIndices?index=NIFTY%20500",headers=NSE_HEADERS,timeout=15)
+            if r.status_code==403:
+                print(f"[NSE] Init 403 attempt {attempt+1}/5 — refreshing session")
+                nse_session=_make_nse_session();session_born=time.time()
+                time.sleep(2**attempt);continue
             for item in r.json().get("data",[]):
                 sym=item.get("symbol","")
                 if sym:
@@ -396,27 +411,44 @@ def fetch_nse_loop():
             time.sleep(2**attempt)
     while True:
         try:
+            # Refresh session every 10 minutes to avoid cookie expiry
+            if time.time()-session_born>600:
+                nse_session=_make_nse_session();session_born=time.time()
+                print("[NSE] Session refreshed (10 min)")
             live=ws_has_live_ticks()
-            s2=requests.Session()
-            s2.get("https://www.nseindia.com",headers=NSE_HEADERS,timeout=5)
+            # --- Nifty 100 update (always, even in WS mode — needed for ORB Nifty gate) ---
             try:
-                r100=s2.get("https://www.nseindia.com/api/equity-stockIndices?index=NIFTY%20100",headers=NSE_HEADERS,timeout=5)
-                for item in r100.json().get("data",[]):
-                    if item.get("symbol")=="NIFTY 100":
-                        with lock:
-                            market_data["NIFTY 100"]={"symbol":"NIFTY 100",
-                                "ltp":float(item.get("lastPrice",0) or 0),
-                                "change_pct":float(item.get("pChange",0) or 0),
-                                "change":float(item.get("change",0) or 0),
-                                "updated":datetime.datetime.now().isoformat()}
-                        break
+                r100=nse_session.get("https://www.nseindia.com/api/equity-stockIndices?index=NIFTY%20100",headers=NSE_HEADERS,timeout=5)
+                if r100.status_code==403:
+                    print("[NSE] Nifty100 403 — refreshing session")
+                    nse_session=_make_nse_session();session_born=time.time()
+                else:
+                    for item in r100.json().get("data",[]):
+                        if item.get("symbol")=="NIFTY 100":
+                            with lock:
+                                market_data["NIFTY 100"]={"symbol":"NIFTY 100",
+                                    "ltp":float(item.get("lastPrice",0) or 0),
+                                    "change_pct":float(item.get("pChange",0) or 0),
+                                    "change":float(item.get("change",0) or 0),
+                                    "updated":datetime.datetime.now().isoformat()}
+                            break
             except Exception as e:
                 print(f"[NSE] Nifty100 error: {e}")
-            # Always update orb Nifty freshness after NSE fetch
+            # Always push Nifty to ORB — use last known value if fetch failed
             nifty_chg=market_data.get("NIFTY 100",{}).get("change_pct",0)
             if nifty_chg!=0:orb.update_nifty(nifty_chg,_ist())
+            # --- Stock price update (only when WS not live) ---
             if not live:
-                r500=s2.get("https://www.nseindia.com/api/equity-stockIndices?index=NIFTY%20500",headers=NSE_HEADERS,timeout=10)
+                r500=nse_session.get("https://www.nseindia.com/api/equity-stockIndices?index=NIFTY%20500",headers=NSE_HEADERS,timeout=10)
+                # FIX: check status BEFORE calling .json() — 403 body is not JSON
+                if r500.status_code==403:
+                    fail_count=min(fail_count+1,8)
+                    delay=min(2**fail_count,60)*(0.75+random.random()*0.5)  # jitter
+                    print(f"[NSE] Rate limited 403 fail#{fail_count} — sleeping {delay:.1f}s, refreshing session")
+                    nse_session=_make_nse_session();session_born=time.time()
+                    time.sleep(delay)
+                    continue  # skip ORB processing this cycle; retry next iteration
+                fail_count=0
                 for item in r500.json().get("data",[]):
                     sym=item.get("symbol","")
                     if sym and sym in market_data:
@@ -433,12 +465,6 @@ def fetch_nse_loop():
                         lo=float(item.get("dayLow",0) or 0)
                         if hi>0 and lo>0 and ltp>0:
                             market_data[sym]["vwap"]=round((hi+lo+ltp)/3,2)
-                if r500.status_code==403:
-                    fail_count=min(fail_count+1,8)
-                    print(f"[NSE] Rate limited 403 fail#{fail_count}")
-                    time.sleep(min(2**fail_count,60))
-                else:
-                    fail_count=0
             fetch_count+=1
             src="WS" if live else "NSE"
             print(f"[{src}] Update #{fetch_count} — {len(market_data)} stocks")
