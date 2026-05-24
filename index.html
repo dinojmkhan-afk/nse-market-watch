@@ -123,24 +123,16 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,san
 .btn-cyan:hover{background:rgba(0,212,255,0.22);}
 select,input[type=text],input[type=number],input[type=password]{background:var(--card);border:1px solid var(--border);color:var(--text);padding:3px 8px;border-radius:6px;font-size:0.72rem;outline:none;}
 select:focus,input:focus{border-color:var(--accent);}
-.stats-bar{padding:8px 16px;display:flex;gap:8px;background:var(--bg);border-bottom:1px solid var(--border);flex-wrap:wrap;align-items:center;}
-.stat{display:flex;flex-direction:column;align-items:center;padding:5px 14px;border-radius:8px;border:1px solid transparent;min-width:64px;}
-.stat.st-stocks{background:rgba(0,212,255,0.07);border-color:rgba(0,212,255,0.22);}
-.stat.st-gainers{background:rgba(63,185,80,0.07);border-color:rgba(63,185,80,0.22);}
-.stat.st-losers{background:rgba(248,81,73,0.07);border-color:rgba(248,81,73,0.22);}
-.stat.st-alerted{background:rgba(210,153,34,0.08);border-color:rgba(210,153,34,0.28);}
-.stat-lbl{font-size:0.58rem;text-transform:uppercase;font-weight:700;letter-spacing:0.4px;}
-.stat.st-stocks .stat-lbl{color:var(--accent);}
-.stat.st-gainers .stat-lbl{color:var(--green);}
-.stat.st-losers  .stat-lbl{color:var(--red);}
-.stat.st-alerted .stat-lbl{color:var(--gold);}
-.stat-val{font-size:1rem;font-weight:800;margin-top:2px;}
-.stat-val.green{color:var(--green);}.stat-val.red{color:var(--red);}.stat-val.cyan{color:var(--accent);}
-.stat.st-alerted .stat-val{color:var(--gold);}
 .filters{padding:8px 16px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--border);}
 .search-input{background:var(--card);border:1px solid var(--border);color:var(--text);padding:5px 12px;border-radius:6px;font-size:0.75rem;flex:1;min-width:150px;max-width:300px;outline:none;}
-.filter-btn{padding:4px 12px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:0.7rem;cursor:pointer;transition:all .2s;}
+.filter-btn{padding:4px 12px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:0.7rem;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:4px;}
 .filter-btn.active{background:var(--accent);color:#000;border-color:var(--accent);}
+.filter-btn.active .fbadge{background:rgba(0,0,0,0.2);color:inherit;}
+.fbadge{font-size:0.6rem;font-weight:800;padding:1px 5px;border-radius:10px;background:rgba(255,255,255,0.1);}
+.fbadge-cyan{background:rgba(0,212,255,0.18);color:var(--accent);}
+.fbadge-green{background:rgba(63,185,80,0.18);color:var(--green);}
+.fbadge-red{background:rgba(248,81,73,0.18);color:var(--red);}
+.fbadge-gold{background:rgba(210,153,34,0.2);color:var(--gold);}
 .table-wrap{overflow-x:auto;}
 table{width:100%;border-collapse:collapse;}
 thead th{background:var(--card);padding:8px 12px;text-align:left;font-size:0.65rem;text-transform:uppercase;color:var(--muted);white-space:nowrap;cursor:pointer;border-bottom:2px solid var(--border);}
@@ -347,23 +339,16 @@ td{padding:7px 12px;font-size:0.75rem;white-space:nowrap;}
     </div>
   </div>
 
-  <div class="stats-bar">
-    <div class="stat st-stocks"><div class="stat-lbl">Stocks</div><div class="stat-val cyan" id="stStocks">0</div></div>
-    <div class="stat st-gainers"><div class="stat-lbl">Gainers</div><div class="stat-val green" id="stGain">0</div></div>
-    <div class="stat st-losers"><div class="stat-lbl">Losers</div><div class="stat-val red" id="stLoss">0</div></div>
-    <div class="stat st-alerted"><div class="stat-lbl">Alerted</div><div class="stat-val" id="stAlert">0</div></div>
-    <div class="stat" style="margin-left:auto"><div class="stat-lbl" style="color:var(--muted)">Updated</div><div class="stat-val" id="stUpd" style="font-size:0.7rem;color:var(--muted)">--</div></div>
-  </div>
-
   <div class="filters">
     <input type="text" class="search-input" id="searchBox" placeholder="Search stock..." oninput="renderTable()">
-    <button class="filter-btn active" onclick="setFilter('all',this)">All</button>
-    <button class="filter-btn" onclick="setFilter('gain',this)">Gainers</button>
-    <button class="filter-btn" onclick="setFilter('loss',this)">Losers</button>
-    <button class="filter-btn" onclick="setFilter('alerted',this)">Alerted</button>
+    <button class="filter-btn active" onclick="setFilter('all',this)">All <span class="fbadge fbadge-cyan" id="stStocks">0</span></button>
+    <button class="filter-btn" onclick="setFilter('gain',this)">Gainers <span class="fbadge fbadge-green" id="stGain">0</span></button>
+    <button class="filter-btn" onclick="setFilter('loss',this)">Losers <span class="fbadge fbadge-red" id="stLoss">0</span></button>
+    <button class="filter-btn" onclick="setFilter('alerted',this)">Alerted <span class="fbadge fbadge-gold" id="stAlert">0</span></button>
     <button class="filter-btn" onclick="setFilter('vol',this)">Vol Surge</button>
     <button class="filter-btn" onclick="setFilter('52h',this)">52W High</button>
     <button class="filter-btn" onclick="setFilter('52l',this)">52W Low</button>
+    <span style="margin-left:auto;font-size:0.63rem;color:var(--muted);white-space:nowrap">⟳ <span id="stUpd">--</span></span>
   </div>
 
   <div class="table-wrap">
