@@ -725,8 +725,13 @@ def place_order():
 
 @app.route("/api/orders/exit",methods=["POST"])
 def exit_pos():
-    d=request.json
-    return jsonify(om.exit_position(d.get("symbol"),d.get("quantity"),d.get("price"),d.get("reason","MANUAL")))
+    d=request.json or {}
+    sym=d.get("symbol")
+    pos=om.positions.get(sym)
+    if not pos:return jsonify({"success":False,"error":"No position"})
+    qty=d.get("quantity") or pos["qty_remaining"]
+    price=d.get("price") or pos.get("last_ltp",pos["entry_price"])
+    return jsonify(om.exit_position(sym,qty,price,d.get("reason","MANUAL")))
 
 @app.route("/api/orders/exit-all",methods=["POST"])
 def exit_all():om.exit_all("MANUAL");return jsonify({"success":True})
