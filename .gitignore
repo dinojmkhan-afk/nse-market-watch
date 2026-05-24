@@ -1,0 +1,10 @@
+.state.json
+.trade_history.json
+.trade_history.json.bak
+NSE_symbols.txt
+NSE_symbols.txt.zip
+*.tar.gz
+*.bak
+*.tmp
+__pycache__/
+*.pyc
