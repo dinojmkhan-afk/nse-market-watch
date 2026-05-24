@@ -1,10 +1,37 @@
+# Sensitive data
 .state.json
 .trade_history.json
 .trade_history.json.bak
+.trade_history.json.tmp
+
+# Master contract files
 NSE_symbols.txt
 NSE_symbols.txt.zip
+
+# Backups and old versions
 *.tar.gz
 *.bak
+*.bak*
+*.save
 *.tmp
+*_backup.*
+*_download.*
+*_before_fix.*
+*_v2_*
+
+# Old/unused scripts
+fix.py
+candle_engine.py
+daily_report.py
+strategy_engine.py
+test_suite.py
+test_results.txt
+flattrade_login.py
+app_before_fix.py
+app_v2_backup.py
+index_v2_backup.html
+
+# Python cache
 __pycache__/
 *.pyc
+*.pyo
