@@ -55,13 +55,19 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,san
 .btn-red{background:var(--red);color:#fff;}
 .btn-muted{background:var(--border);color:var(--text);}
 
-/* ── P&L summary bar ── */
-.pnl-bar{background:var(--card);border-bottom:1px solid var(--border);padding:8px 16px;display:flex;gap:16px;flex-wrap:wrap;align-items:center;}
-.pnl-item{display:flex;flex-direction:column;}
-.pnl-lbl{font-size:0.58rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;}
-.pnl-val{font-size:0.88rem;font-weight:700;}
+/* ── P&L summary bar — equal-sized cards ── */
+.pnl-bar{background:var(--surface);border-bottom:1px solid var(--border);padding:8px;display:grid;grid-template-columns:repeat(9,1fr);gap:6px;}
+.pnl-item{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:8px 10px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;min-width:0;transition:border-color .2s,transform .15s;}
+.pnl-item:hover{border-color:var(--muted);transform:translateY(-1px);}
+.pnl-lbl{font-size:0.56rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;}
+.pnl-val{font-size:0.88rem;font-weight:800;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;}
 .pv-pos{color:var(--green);}.pv-neg{color:var(--red);}.pv-neu{color:var(--accent);}
-.pnl-divider{width:1px;height:28px;background:var(--border);flex-shrink:0;}
+/* Highlight Net P&L — the headline metric */
+.pnl-item.headline{background:linear-gradient(135deg,rgba(0,212,255,0.08),rgba(163,113,247,0.08));border-color:rgba(0,212,255,0.3);}
+.pnl-item.headline .pnl-val{font-size:1rem;}
+@media(max-width:1100px){.pnl-bar{grid-template-columns:repeat(5,1fr);}}
+@media(max-width:700px){.pnl-bar{grid-template-columns:repeat(3,1fr);}}
+@media(max-width:480px){.pnl-bar{grid-template-columns:repeat(2,1fr);}}
 
 /* ── Tab navigation ── */
 .tab-nav{background:var(--surface);border-bottom:2px solid var(--border);display:flex;overflow-x:auto;-webkit-overflow-scrolling:touch;}
@@ -261,15 +267,12 @@ td{padding:7px 12px;font-size:0.75rem;white-space:nowrap;}
 
 <!-- ── P&L summary bar ── -->
 <div class="pnl-bar">
-  <div class="pnl-item"><div class="pnl-lbl">Net P&L</div><div class="pnl-val pv-neu" id="pnlNet">Rs 0</div></div>
-  <div class="pnl-divider"></div>
+  <div class="pnl-item headline"><div class="pnl-lbl">Net P&L</div><div class="pnl-val pv-neu" id="pnlNet">Rs 0</div></div>
   <div class="pnl-item"><div class="pnl-lbl">Gross</div><div class="pnl-val" id="pnlGross">Rs 0</div></div>
   <div class="pnl-item"><div class="pnl-lbl">Charges</div><div class="pnl-val" id="pnlCharges">-Rs 0</div></div>
-  <div class="pnl-divider"></div>
   <div class="pnl-item"><div class="pnl-lbl">Trades</div><div class="pnl-val" id="pnlTrades">0</div></div>
   <div class="pnl-item"><div class="pnl-lbl">Wins</div><div class="pnl-val pv-pos" id="pnlWins">0</div></div>
   <div class="pnl-item"><div class="pnl-lbl">Losses</div><div class="pnl-val pv-neg" id="pnlLosses">0</div></div>
-  <div class="pnl-divider"></div>
   <div class="pnl-item"><div class="pnl-lbl">Open</div><div class="pnl-val" id="pnlOpen">0</div></div>
   <div class="pnl-item"><div class="pnl-lbl">Capital</div><div class="pnl-val pv-neu" id="pnlCapital">Rs 20,000</div></div>
   <div class="pnl-item"><div class="pnl-lbl">Buying Power</div><div class="pnl-val pv-neu" id="stBP">Rs 80,000</div></div>
