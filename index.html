@@ -40,17 +40,14 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,san
 .toggle-btn.real.active{background:var(--green);color:#000;}
 .toggle-btn.inactive{background:transparent;color:var(--muted);}
 
-/* ── Strategy bar ── */
-.strat-bar{background:var(--surface);border-bottom:1px solid var(--border);padding:6px 16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
-.strat-btn{padding:5px 16px;border-radius:6px;border:none;font-size:0.75rem;font-weight:700;cursor:pointer;}
+.strat-btn{padding:4px 12px;border-radius:6px;border:none;font-size:0.72rem;font-weight:700;cursor:pointer;white-space:nowrap;}
 .strat-off{background:var(--border);color:var(--text);}
 .strat-on{background:var(--green);color:#000;}
-.strat-info{font-size:0.7rem;color:var(--muted);}
-.capital-wrap{display:flex;align-items:center;gap:6px;margin-left:auto;}
-.capital-label{font-size:0.7rem;color:var(--muted);}
-.capital-input{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:6px;font-size:0.75rem;width:100px;outline:none;}
+.capital-wrap{display:flex;align-items:center;gap:5px;}
+.capital-label{font-size:0.68rem;color:var(--muted);}
+.capital-input{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:3px 7px;border-radius:6px;font-size:0.72rem;width:88px;outline:none;}
 .capital-input:focus{border-color:var(--accent);}
-.capital-btn{background:var(--purple);color:#fff;border:none;padding:4px 10px;border-radius:6px;font-size:0.7rem;font-weight:700;cursor:pointer;}
+.capital-btn{background:var(--purple);color:#fff;border:none;padding:3px 9px;border-radius:6px;font-size:0.68rem;font-weight:700;cursor:pointer;}
 .btn{padding:4px 12px;border-radius:6px;border:none;font-size:0.7rem;font-weight:700;cursor:pointer;white-space:nowrap;}
 .btn-red{background:var(--red);color:#fff;}
 .btn-muted{background:var(--border);color:var(--text);}
@@ -248,7 +245,7 @@ td{padding:7px 12px;font-size:0.75rem;white-space:nowrap;}
   </div>
 </div>
 
-<!-- ── Login bar ── -->
+<!-- ── Login + controls bar ── -->
 <div class="login-bar">
   <div id="loginSection">
     <button class="login-btn" onclick="doLogin()">🔐 Login with Flattrade</button>
@@ -257,24 +254,21 @@ td{padding:7px 12px;font-size:0.75rem;white-space:nowrap;}
     <span class="logged-info">✅ FZ07236 Logged In</span>
     <button class="logout-btn" onclick="doLogout()">Logout</button>
   </div>
+  <div style="width:1px;height:18px;background:var(--border);"></div>
+  <button class="strat-btn strat-off" id="stratBtn" onclick="toggleStrategy()">⚡ Strategy OFF</button>
+  <button class="btn btn-red" onclick="emergencyStop()">🛑 Stop</button>
+  <div style="width:1px;height:18px;background:var(--border);"></div>
+  <div class="capital-wrap">
+    <span class="capital-label">Capital Rs</span>
+    <input type="number" class="capital-input" id="capitalInput" value="20000" min="1000">
+    <button class="capital-btn" onclick="setCapital()">Set</button>
+  </div>
   <div class="mode-toggle">
     <span class="mode-label">MODE:</span>
     <div class="toggle-wrap">
       <button class="toggle-btn paper active" id="paperBtn" onclick="setMode(true)">📄 PAPER</button>
       <button class="toggle-btn real inactive" id="realBtn" onclick="setMode(false)">💰 REAL</button>
     </div>
-  </div>
-</div>
-
-<!-- ── Strategy bar ── -->
-<div class="strat-bar">
-  <button class="strat-btn strat-off" id="stratBtn" onclick="toggleStrategy()">⚡ Strategy OFF</button>
-  <button class="btn btn-red" onclick="emergencyStop()">🛑 EMERGENCY STOP</button>
-  <span class="strat-info">Auto ORB 5-Min • 9:30–10:45 IST</span>
-  <div class="capital-wrap">
-    <span class="capital-label">Capital: Rs</span>
-    <input type="number" class="capital-input" id="capitalInput" value="20000" min="1000">
-    <button class="capital-btn" onclick="setCapital()">Set</button>
   </div>
 </div>
 
