@@ -24,7 +24,7 @@ FLATTRADE_POS_URL="https://piconnect.flattrade.in/PiConnectTP/PositionBook"
 STATE_FILE="/home/ubuntu/market-watch/.state.json"
 NSE_HEADERS={"User-Agent":"Mozilla/5.0","Accept":"application/json","Referer":"https://www.nseindia.com"}
 session_token=None;ws_engine=None;market_data={};lock=threading.Lock()  # vwap_data removed — orb owns VWAP
-fetch_count=0;strategy_active=False
+fetch_count=0;strategy_active=False;_last_snapshot_save=0
 asm_gsm_symbols=set();asm_gsm_last_fetch=None
 ui_settings={"ap":"1","am":"5","atype":"sv","aOn":False}
 
@@ -88,6 +88,58 @@ def reset_vwap():
     orb.vwap_data={}  # orb owns VWAP — reset here for daily clock
     print("[VWAP] Reset")
 
+def save_prices_snapshot():
+    try:
+        with lock: snap={s:{k:d[k] for k in ("ltp","change","change_pct","open","high","low","prev_close","vwap") if k in d} for s,d in market_data.items() if d.get("ltp",0)>0}
+        with open(PRICES_SNAPSHOT,"w") as f: json.dump(snap,f)
+    except Exception as e:
+        print(f"[Prices] Snapshot save error: {e}")
+
+def restore_prices_snapshot():
+    if not os.path.exists(PRICES_SNAPSHOT): return
+    try:
+        with open(PRICES_SNAPSHOT) as f: snap=json.load(f)
+        count=0
+        with lock:
+            for sym,prices in snap.items():
+                if sym in market_data:
+                    market_data[sym].update(prices);count+=1
+        print(f"[Prices] Restored last-known prices for {count} stocks")
+    except Exception as e:
+        print(f"[Prices] Snapshot restore error: {e}")
+
+def fetch_prices_from_yahoo():
+    """Fetch last-traded prices from Yahoo Finance v8 chart — used when NSE is unavailable."""
+    from concurrent.futures import ThreadPoolExecutor,as_completed
+    with lock: syms=[s for s in market_data if not is_index(s)]
+    if not syms: return
+    print(f"[Yahoo] Fetching last prices for {len(syms)} stocks...")
+    updated=0
+    def fetch_one(sym):
+        try:
+            r=requests.get(f"https://query1.finance.yahoo.com/v8/finance/chart/{sym}.NS?interval=1d&range=5d",
+                headers={"User-Agent":"Mozilla/5.0"},timeout=8)
+            if r.status_code!=200: return None
+            meta=r.json().get("chart",{}).get("result",[{}])[0].get("meta",{})
+            ltp=float(meta.get("regularMarketPrice") or 0)
+            prev=float(meta.get("chartPreviousClose") or meta.get("previousClose") or 0)
+            if ltp<=0: return None
+            chg=round(ltp-prev,2) if prev>0 else 0
+            chg_pct=round((ltp-prev)/prev*100,2) if prev>0 else 0
+            return sym,{"ltp":ltp,"prev_close":prev,"change":chg,"change_pct":chg_pct}
+        except: return None
+    with ThreadPoolExecutor(max_workers=20) as ex:
+        futures={ex.submit(fetch_one,s):s for s in syms}
+        for fut in as_completed(futures):
+            res=fut.result()
+            if res:
+                sym,prices=res
+                with lock:
+                    if sym in market_data:
+                        market_data[sym].update(prices);updated+=1
+    print(f"[Yahoo] Updated {updated} stocks with last prices")
+    if updated>0: save_prices_snapshot()
+
 def fetch_asm_gsm_list():
     global asm_gsm_symbols,asm_gsm_last_fetch
     symbols=set()
@@ -137,6 +189,7 @@ NSE_MASTER_URL="https://api.shoonya.com/NSE_symbols.txt.zip"
 NSE_MASTER_FILE="/home/ubuntu/market-watch/NSE_symbols.txt"
 NSE_MASTER_ZIP="/home/ubuntu/market-watch/NSE_symbols.txt.zip"
 TOP500_CACHE="/home/ubuntu/market-watch/.top500_cache.json"
+PRICES_SNAPSHOT="/home/ubuntu/market-watch/.prices_snapshot.json"
 _master_token_map={}  # global cache: {symbol: token_str}
 
 def refresh_master_file():
@@ -315,6 +368,10 @@ def on_tick(tick):
             market_data[sym]["change"]=round(ltp-prev,2)
             market_data[sym]["change_pct"]=round((ltp-prev)/prev*100,2)
     om.update_ltp(sym,ltp)
+    global _last_snapshot_save
+    if time.time()-_last_snapshot_save>300:
+        _last_snapshot_save=time.time()
+        threading.Thread(target=save_prices_snapshot,daemon=True).start()
 
 def on_candle_close(sym,candle):
     if not strategy_active:return
@@ -482,6 +539,7 @@ def fetch_nse_loop():
             fetch_count+=1
             src="WS" if live else "NSE"
             print(f"[{src}] Update #{fetch_count} — {len(market_data)} stocks")
+            if fetch_count%60==0: save_prices_snapshot()  # save every ~5 min
             if strategy_active and not live:
                 now=_ist();h_ist=now.hour;m_ist=now.minute;mins_ist=h_ist*60+m_ist
                 if h_ist==9 and 15<=m_ist<20:
@@ -895,6 +953,9 @@ if __name__=="__main__":
                                             "dir":"","seeded":True}
                                         count+=1
                     print(f"[Startup] Seeded {count} symbols from master file")
+        restore_prices_snapshot()
+        if not any(d.get("ltp",0)>0 for d in market_data.values()):
+            threading.Thread(target=fetch_prices_from_yahoo,daemon=True).start()
     threading.Thread(target=_startup,daemon=True).start()
     threading.Thread(target=master_clock_loop,daemon=True).start()
     print("[Server] Master clock started")
