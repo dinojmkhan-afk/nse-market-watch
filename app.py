@@ -136,6 +136,7 @@ def update_stock_margins():
 NSE_MASTER_URL="https://api.shoonya.com/NSE_symbols.txt.zip"
 NSE_MASTER_FILE="/home/ubuntu/market-watch/NSE_symbols.txt"
 NSE_MASTER_ZIP="/home/ubuntu/market-watch/NSE_symbols.txt.zip"
+TOP500_CACHE="/home/ubuntu/market-watch/.top500_cache.json"
 _master_token_map={}  # global cache: {symbol: token_str}
 
 def refresh_master_file():
@@ -842,30 +843,48 @@ if __name__=="__main__":
                                 "value":float(item.get("totalTradedValue",0) or 0),
                                 "dir":"","updated":datetime.datetime.now().isoformat()}
                 print(f"[Startup] Loaded {len(market_data)} stocks (top 500 by value)")
+                try:
+                    syms=[s for s in market_data if not is_index(s)]
+                    with open(TOP500_CACHE,"w") as f: json.dump(syms,f)
+                except Exception: pass
                 break
             except Exception as e:
                 print(f"[Startup] NSE load attempt {attempt+1}/5: {e}")
                 time.sleep(2**attempt)
-        # If NSE failed, seed from master file
+        # If NSE failed, seed from cached top-500 list or full master file
         if len(market_data) < 10:
-            print("[Startup] NSE unavailable — seeding from master file")
-            import csv
-            if os.path.exists(NSE_MASTER_FILE):
-                count=0
-                with open(NSE_MASTER_FILE,"r") as f:
-                    reader=csv.reader(f)
-                    next(reader)
-                    for row in reader:
-                        if len(row)<6:continue
-                        if row[0]=="NSE" and row[5].strip()=="EQ":
-                            sym=row[4].replace("-EQ","").strip()
-                            with lock:
-                                if sym not in market_data:
-                                    market_data[sym]={"symbol":sym,"ltp":0,"vwap":0,
-                                        "volume_raw":0,"change":0,"change_pct":0,
-                                        "dir":"","seeded":True}
-                                    count+=1
-                print(f"[Startup] Seeded {count} symbols from master file")
+            seeded=0
+            if os.path.exists(TOP500_CACHE):
+                try:
+                    with open(TOP500_CACHE) as f: cached=json.load(f)
+                    for sym in cached:
+                        with lock:
+                            market_data[sym]={"symbol":sym,"ltp":0,"vwap":0,
+                                "volume_raw":0,"change":0,"change_pct":0,
+                                "dir":"","seeded":True}
+                            seeded+=1
+                    print(f"[Startup] Seeded {seeded} symbols from top-500 cache")
+                except Exception as e:
+                    print(f"[Startup] Cache load error: {e}")
+            if len(market_data) < 10:
+                print("[Startup] NSE unavailable — seeding from master file")
+                import csv
+                if os.path.exists(NSE_MASTER_FILE):
+                    count=0
+                    with open(NSE_MASTER_FILE,"r") as f:
+                        reader=csv.reader(f)
+                        next(reader)
+                        for row in reader:
+                            if len(row)<6:continue
+                            if row[0]=="NSE" and row[5].strip()=="EQ":
+                                sym=row[4].replace("-EQ","").strip()
+                                with lock:
+                                    if sym not in market_data:
+                                        market_data[sym]={"symbol":sym,"ltp":0,"vwap":0,
+                                            "volume_raw":0,"change":0,"change_pct":0,
+                                            "dir":"","seeded":True}
+                                        count+=1
+                    print(f"[Startup] Seeded {count} symbols from master file")
     threading.Thread(target=_startup,daemon=True).start()
     threading.Thread(target=master_clock_loop,daemon=True).start()
     print("[Server] Master clock started")
