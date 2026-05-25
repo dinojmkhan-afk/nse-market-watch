@@ -90,7 +90,7 @@ def reset_vwap():
 
 def save_prices_snapshot():
     try:
-        with lock: snap={s:{k:d[k] for k in ("ltp","change","change_pct","open","high","low","prev_close","vwap") if k in d} for s,d in market_data.items() if d.get("ltp",0)>0}
+        with lock: snap={s:{k:d[k] for k in ("ltp","change","change_pct","open","high","low","prev_close","vwap","volume_raw","value") if k in d} for s,d in market_data.items() if d.get("ltp",0)>0}
         with open(PRICES_SNAPSHOT,"w") as f: json.dump(snap,f)
     except Exception as e:
         print(f"[Prices] Snapshot save error: {e}")
@@ -126,7 +126,9 @@ def fetch_prices_from_yahoo():
             if ltp<=0: return None
             chg=round(ltp-prev,2) if prev>0 else 0
             chg_pct=round((ltp-prev)/prev*100,2) if prev>0 else 0
-            return sym,{"ltp":ltp,"prev_close":prev,"change":chg,"change_pct":chg_pct}
+            vol=int(meta.get("regularMarketVolume") or 0)
+            val=round(ltp*vol/1e7,2) if vol>0 else 0  # crores
+            return sym,{"ltp":ltp,"prev_close":prev,"change":chg,"change_pct":chg_pct,"volume_raw":vol,"value":val}
         except: return None
     with ThreadPoolExecutor(max_workers=20) as ex:
         futures={ex.submit(fetch_one,s):s for s in syms}
@@ -927,7 +929,7 @@ if __name__=="__main__":
                     for sym in cached:
                         with lock:
                             market_data[sym]={"symbol":sym,"ltp":0,"vwap":0,
-                                "volume_raw":0,"change":0,"change_pct":0,
+                                "volume_raw":0,"value":0,"change":0,"change_pct":0,
                                 "dir":"","seeded":True}
                             seeded+=1
                     print(f"[Startup] Seeded {seeded} symbols from top-500 cache")
@@ -949,12 +951,13 @@ if __name__=="__main__":
                                 with lock:
                                     if sym not in market_data:
                                         market_data[sym]={"symbol":sym,"ltp":0,"vwap":0,
-                                            "volume_raw":0,"change":0,"change_pct":0,
+                                            "volume_raw":0,"value":0,"change":0,"change_pct":0,
                                             "dir":"","seeded":True}
                                         count+=1
                     print(f"[Startup] Seeded {count} symbols from master file")
         restore_prices_snapshot()
-        if not any(d.get("ltp",0)>0 for d in market_data.values()):
+        # Run Yahoo fetch if no volume data — covers both fresh start and post-snapshot restores
+        if not any(d.get("volume_raw",0)>0 for d in market_data.values()):
             threading.Thread(target=fetch_prices_from_yahoo,daemon=True).start()
     threading.Thread(target=_startup,daemon=True).start()
     threading.Thread(target=master_clock_loop,daemon=True).start()
