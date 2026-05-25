@@ -851,7 +851,7 @@ function renderTable(){
       +"<td>"+(s.alerted&&s.alert_pct_live?pp(s.alert_pct_live):"-")+"</td>"
       +"<td style='font-size:11px;color:var(--muted)'>"+(s.alerted&&s.alert_time?s.alert_time:"-")+"</td>"
       +"<td class='hm'>"+(s.volume_raw?fv(s.volume_raw):"-")+"</td>"
-      +"<td class='hm'>"+fv(s.value)+"</td><td class='hm'>"+rb(s.range_pct||0)+"</td>"
+      +"<td class='hm'>"+(s.value?fv(s.value)+" Cr":"-")+"</td><td class='hm'>"+rb(s.range_pct||0)+"</td>"
       +"<td><button class='chart-btn' onclick='event.stopPropagation();openChart(\""+sym+"\")'>Chart</button></td></tr>";
   }).join("");
 }
