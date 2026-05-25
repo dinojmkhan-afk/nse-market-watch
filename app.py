@@ -90,7 +90,7 @@ def reset_vwap():
 
 def save_prices_snapshot():
     try:
-        with lock: snap={s:{k:d[k] for k in ("ltp","change","change_pct","open","high","low","prev_close","vwap","volume_raw","value") if k in d} for s,d in market_data.items() if d.get("ltp",0)>0}
+        with lock: snap={s:{k:d[k] for k in ("ltp","change","change_pct","open","high","low","prev_close","vwap","volume_raw","value","range_pct") if k in d} for s,d in market_data.items() if d.get("ltp",0)>0}
         with open(PRICES_SNAPSHOT,"w") as f: json.dump(snap,f)
     except Exception as e:
         print(f"[Prices] Snapshot save error: {e}")
@@ -128,7 +128,10 @@ def fetch_prices_from_yahoo():
             chg_pct=round((ltp-prev)/prev*100,2) if prev>0 else 0
             vol=int(meta.get("regularMarketVolume") or 0)
             val=round(ltp*vol/1e7,2) if vol>0 else 0  # crores
-            return sym,{"ltp":ltp,"prev_close":prev,"change":chg,"change_pct":chg_pct,"volume_raw":vol,"value":val}
+            wk_hi=float(meta.get("fiftyTwoWeekHigh") or 0)
+            wk_lo=float(meta.get("fiftyTwoWeekLow") or 0)
+            rng=round((ltp-wk_lo)/(wk_hi-wk_lo)*100,1) if wk_hi>wk_lo else 0
+            return sym,{"ltp":ltp,"prev_close":prev,"change":chg,"change_pct":chg_pct,"volume_raw":vol,"value":val,"range_pct":rng}
         except: return None
     with ThreadPoolExecutor(max_workers=20) as ex:
         futures={ex.submit(fetch_one,s):s for s in syms}
@@ -468,7 +471,8 @@ def fetch_nse_loop():
                             "change_pct":float(item.get("pChange",0) or 0),
                             "volume_raw":int(item.get("totalTradedVolume",0) or 0),
                             "value":float(item.get("totalTradedValue",0) or 0),
-                            "dir":"","updated":datetime.datetime.now().isoformat()}
+                            "dir":"","updated":datetime.datetime.now().isoformat(),
+                            "range_pct":round((float(item.get("lastPrice",0) or 0)-float(item.get("yearLow",0) or 0))/(float(item.get("yearHigh",0) or 1)-float(item.get("yearLow",0) or 0))*100,1) if float(item.get("yearHigh",0) or 0)>float(item.get("yearLow",0) or 0) else 0}
             print(f"[NSE] Loaded {len(market_data)} stocks")
             break
         except Exception as e:
@@ -538,6 +542,10 @@ def fetch_nse_loop():
                         lo=float(item.get("dayLow",0) or 0)
                         if hi>0 and lo>0 and ltp>0:
                             market_data[sym]["vwap"]=round((hi+lo+ltp)/3,2)
+                        yr_hi=float(item.get("yearHigh",0) or 0)
+                        yr_lo=float(item.get("yearLow",0) or 0)
+                        if yr_hi>yr_lo:
+                            market_data[sym]["range_pct"]=round((ltp-yr_lo)/(yr_hi-yr_lo)*100,1)
             fetch_count+=1
             src="WS" if live else "NSE"
             print(f"[{src}] Update #{fetch_count} — {len(market_data)} stocks")
@@ -956,8 +964,8 @@ if __name__=="__main__":
                                         count+=1
                     print(f"[Startup] Seeded {count} symbols from master file")
         restore_prices_snapshot()
-        # Run Yahoo fetch if no volume data — covers both fresh start and post-snapshot restores
-        if not any(d.get("volume_raw",0)>0 for d in market_data.values()):
+        # Run Yahoo fetch if volume or range data is missing — covers fresh starts and snapshot gaps
+        if not any(d.get("volume_raw",0)>0 for d in market_data.values()) or not any(d.get("range_pct",0)>0 for d in market_data.values()):
             threading.Thread(target=fetch_prices_from_yahoo,daemon=True).start()
     threading.Thread(target=_startup,daemon=True).start()
     threading.Thread(target=master_clock_loop,daemon=True).start()
