@@ -389,6 +389,9 @@ def fetch_nse_loop():
                 print(f"[NSE] Init 403 attempt {attempt+1}/5 — refreshing session")
                 nse_session=_make_nse_session();session_born=time.time()
                 time.sleep(2**attempt);continue
+            if r.status_code!=200:
+                print(f"[NSE] Init HTTP {r.status_code} — market closed?")
+                break
             for item in r.json().get("data",[]):
                 sym=item.get("symbol","")
                 if sym:
@@ -422,7 +425,7 @@ def fetch_nse_loop():
                 if r100.status_code==403:
                     print("[NSE] Nifty100 403 — refreshing session")
                     nse_session=_make_nse_session();session_born=time.time()
-                else:
+                elif r100.status_code==200:
                     for item in r100.json().get("data",[]):
                         if item.get("symbol")=="NIFTY 100":
                             with lock:
@@ -449,6 +452,7 @@ def fetch_nse_loop():
                     time.sleep(delay)
                     continue  # skip ORB processing this cycle; retry next iteration
                 fail_count=0
+                if r500.status_code!=200: continue
                 for item in r500.json().get("data",[]):
                     sym=item.get("symbol","")
                     if sym and sym in market_data:
@@ -813,6 +817,9 @@ if __name__=="__main__":
                 s.get("https://www.nseindia.com",headers=NSE_HEADERS,timeout=5)
                 r=s.get("https://www.nseindia.com/api/equity-stockIndices?index=NIFTY%20500",
                     headers=NSE_HEADERS,timeout=15)
+                if r.status_code!=200:
+                    print(f"[Startup] NSE HTTP {r.status_code} — market closed?")
+                    break
                 items=r.json().get("data",[])
                 # Sort by value descending, take top 500
                 items_sorted=sorted(
