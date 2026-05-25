@@ -127,7 +127,10 @@ def fetch_prices_from_yahoo():
             chg=round(ltp-prev,2) if prev>0 else 0
             chg_pct=round((ltp-prev)/prev*100,2) if prev>0 else 0
             vol=int(meta.get("regularMarketVolume") or 0)
-            val=round(ltp*vol/1e7,2) if vol>0 else 0  # crores
+            hi=float(meta.get("regularMarketDayHigh") or ltp)
+            lo=float(meta.get("regularMarketDayLow") or ltp)
+            avg_price=(hi+lo+ltp)/3
+            val=round(avg_price*vol/1e7,2) if vol>0 else 0  # crores (volume × avg price)
             wk_hi=float(meta.get("fiftyTwoWeekHigh") or 0)
             wk_lo=float(meta.get("fiftyTwoWeekLow") or 0)
             rng=round((ltp-wk_lo)/(wk_hi-wk_lo)*100,1) if wk_hi>wk_lo else 0
