@@ -417,6 +417,13 @@ def fetch_nse_loop():
             time.sleep(2**attempt)
     while True:
         try:
+            # Skip all NSE polling outside market hours — avoids rate-limit on weekends
+            now_ist=_ist()
+            ist_mins=now_ist.hour*60+now_ist.minute
+            market_open=now_ist.weekday()<5 and 9*60<=ist_mins<=15*60+35
+            if not market_open:
+                time.sleep(60)
+                continue
             # Refresh session every 10 minutes to avoid cookie expiry
             if time.time()-session_born>600:
                 nse_session=_make_nse_session();session_born=time.time()
