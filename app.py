@@ -230,12 +230,13 @@ def seed_market_data_from_master():
                 del market_data[s]
         print(f"[WS] Filtered to top 500 by value, removed {len(to_remove)} stocks")
         return
-    # Fallback: NSE data not available, seed all EQ from master file
+    # Fallback: NSE data not available, seed up to 500 EQ from master file
     count = 0
     with open(NSE_MASTER_FILE, "r") as f:
         reader = csv.reader(f)
         next(reader)
         for row in reader:
+            if count >= 500: break
             if len(row) < 6: continue
             if row[0] == "NSE" and row[5].strip() == "EQ":
                 sym = row[4].replace("-EQ","").strip()
@@ -266,7 +267,7 @@ def start_ws_subscription():
         print(f"[WS] Top 500 by value selected, removed {len(to_remove)} stocks")
     # Step 3: If NSE unavailable — seed from master file as fallback
     elif len(market_data) < 10:
-        print(f"[WS] NSE unavailable — seeding from master file")
+        print(f"[WS] NSE unavailable — seeding 500 symbols from master file")
         import csv
         if os.path.exists(NSE_MASTER_FILE):
             count=0
@@ -274,6 +275,7 @@ def start_ws_subscription():
                 reader=csv.reader(f)
                 next(reader)
                 for row in reader:
+                    if count>=500:break
                     if len(row)<6:continue
                     if row[0]=="NSE" and row[5].strip()=="EQ":
                         sym=row[4].replace("-EQ","").strip()
@@ -867,7 +869,7 @@ if __name__=="__main__":
                 except Exception as e:
                     print(f"[Startup] Cache load error: {e}")
             if len(market_data) < 10:
-                print("[Startup] NSE unavailable — seeding from master file")
+                print("[Startup] NSE unavailable — seeding 500 symbols from master file")
                 import csv
                 if os.path.exists(NSE_MASTER_FILE):
                     count=0
@@ -875,6 +877,7 @@ if __name__=="__main__":
                         reader=csv.reader(f)
                         next(reader)
                         for row in reader:
+                            if count>=500:break
                             if len(row)<6:continue
                             if row[0]=="NSE" and row[5].strip()=="EQ":
                                 sym=row[4].replace("-EQ","").strip()
