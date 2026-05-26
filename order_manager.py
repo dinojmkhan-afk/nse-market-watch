@@ -170,7 +170,14 @@ class OrderManager:
         if sym not in self.positions:return{"success":False,"error":"No position"}
         pos=self.positions[sym];exit_dir="SELL" if pos["direction"]=="BUY" else "BUY"
         if self.paper_mode:
-            result={"success":True,"fill_price":price}
+            # Fill SL exits at the SL price, not the tick that triggered it.
+            # Prevents a gap tick (e.g. SL=113.16 but next tick=114.00) from
+            # multiplying across hundreds of shares and blowing past intended risk.
+            if reason=="SL_HIT" and pos.get("sl_price"):
+                fill_price=pos["sl_price"]
+            else:
+                fill_price=price
+            result={"success":True,"fill_price":fill_price}
         else:
             result=self._real(sym,exit_dir,qty,price,prd=pos.get("product","I"))
             # Smart retry — network errors only

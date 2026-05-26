@@ -209,7 +209,11 @@ class ORBStrategy:
         if sld>ltp*0.02:
             print(f"[ORB] {sym} SL too wide {sld:.2f}>{ltp*0.02:.2f} skipped")
             return None
-        qty=max(1,int(risk/sld)) if sld>0 else 1
+        # Minimum SL distance floor: 0.5% of LTP.
+        # Prevents qty blowup when OR is very tight — e.g. sld=0.22 on a Rs 113
+        # stock gives qty=454, so a 1 Rs gap costs Rs 454 instead of Rs 100.
+        sld_for_sizing=max(sld,ltp*0.005)
+        qty=max(1,int(risk/sld_for_sizing)) if sld_for_sizing>0 else 1
         # Position size cap: max 25% of capital × margin per trade
         max_qty=max(1,int(cap*self.config["MAX_POSITION_PCT"]*margin/ltp))
         qty=min(qty,max_qty)
