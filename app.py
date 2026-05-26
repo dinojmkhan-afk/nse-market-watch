@@ -986,6 +986,26 @@ def today_pnl():
         "trades":d.get("trades",0),"wins":d.get("wins",0),"losses":d.get("losses",0),
         "positions":len(om.positions)})
 
+@app.route("/api/pnl/clear-today",methods=["POST"])
+def clear_today_pnl():
+    today=om._today()
+    with om.lock:
+        # Remove today's closed trades from global trade_log
+        om.trade_log=[t for t in om.trade_log if t.get("date")!=today]
+        # Reset today's daily summary
+        om.daily_pnl[today]={"date":today,"trades":0,"wins":0,"losses":0,
+            "gross_pnl":0.0,"charges":0.0,"net_pnl":0.0,"trade_log":[]}
+        # Clear any open paper positions from the trial
+        paper_syms=[s for s,p in om.positions.items() if p.get("paper_mode",True)]
+        for s in paper_syms:del om.positions[s]
+    om._save_history()
+    # Reset ORB daily counters too
+    orb.trades_today=0;orb.losses_today=0;orb.consecutive_loss=0
+    orb.daily_pnl=0;orb.trading_stopped=False;orb.stop_reason=""
+    with orb.lock:orb.active_signals.clear()
+    print(f"[PNL] Today's paper data cleared ({len(paper_syms)} positions, trades reset)")
+    return jsonify({"success":True,"message":f"Today's data cleared ({len(paper_syms)} positions removed)"})
+
 @app.route("/api/pnl/export")
 def export_pnl():
     report=om.get_daily_report()

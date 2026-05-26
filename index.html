@@ -443,9 +443,12 @@ td{padding:7px 12px;font-size:0.75rem;white-space:nowrap;}
   <div class="tab-content">
     <div class="pnl-report-title">
       <span>📅 Daily P&L Report</span>
-      <a href="/api/pnl/export" style="text-decoration:none">
-        <button class="btn btn-muted" style="font-size:0.65rem">⬇ Export CSV</button>
-      </a>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-muted" style="font-size:0.65rem" onclick="clearTodayPnl()">🗑 Clear Today</button>
+        <a href="/api/pnl/export" style="text-decoration:none">
+          <button class="btn btn-muted" style="font-size:0.65rem">⬇ Export CSV</button>
+        </a>
+      </div>
     </div>
     <div class="pnl-summary-grid" id="pnlSummary"></div>
     <div style="overflow-x:auto">
@@ -1245,6 +1248,14 @@ async function toggleTrial(){
       fetchSignals();
     }else showToast('Trial failed: '+(d.error||'unknown'),'error');
   }
+}
+
+async function clearTodayPnl(){
+  if(!confirm('Clear all of today\'s paper trade data? This removes positions, P&L and trade log for today.'))return;
+  var r=await fetch(SRV+'/api/pnl/clear-today',{method:'POST'});
+  var d=await r.json();
+  if(d.success){showToast('🗑 '+d.message,'info');fetchPnl();fetchStatus();}
+  else showToast('Clear failed: '+(d.error||'unknown'),'error');
 }
 
 // ── Broker data ───────────────────────────────────────────────
