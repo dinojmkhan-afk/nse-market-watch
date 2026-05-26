@@ -179,7 +179,7 @@ class OrderManager:
                 if "timeout" in err or "network" in err or "connection" in err:
                     print(f"[OM] Network error exiting {sym}, retrying in 2s...")
                     time.sleep(2)
-                    result=self._real(sym,exit_dir,qty,price)
+                    result=self._real(sym,exit_dir,qty,price,prd=pos.get("product","I"))
                     if not result["success"]:
                         print(f"[OM] EXIT RETRY FAILED {sym}: {result.get('error')} — MANUAL ACTION REQUIRED!")
                         return result
@@ -265,7 +265,13 @@ class OrderManager:
             try:
                 now=self._ist();mins=now.hour*60+now.minute
                 if mins>=14*60+55 and self.positions:
-                    print("[OM] FORCE EXIT 2:55PM!");self.exit_all("FORCE_EXIT_2:55PM")
+                    # Only force-exit MIS (intraday) positions — CNC holds overnight
+                    mis_syms=[s for s,p in self.positions.items() if p.get("product","I")!="C"]
+                    if mis_syms:
+                        print(f"[OM] FORCE EXIT 2:55PM! {len(mis_syms)} MIS positions")
+                        for sym in mis_syms:
+                            pos=self.positions.get(sym)
+                            if pos:self.exit_position(sym,pos["qty_remaining"],pos.get("last_ltp",pos["entry_price"]),"FORCE_EXIT_2:55PM")
                 today=self._today()
                 if today!=self.today_str:
                     self.today_str=today

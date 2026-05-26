@@ -457,6 +457,7 @@ def on_candle_close(sym,candle):
         return
     orb.record_candle_volume(sym,candle.get("volume",0))
     if orb._is_trade_time():
+        if len(om.positions)>=orb.config["MAX_TRADES_DAY"]:return
         nifty_chg=market_data.get("NIFTY 100",{}).get("change_pct",0)
         orb.update_nifty(nifty_chg,_ist())
         can,_=orb.can_trade()
@@ -648,6 +649,7 @@ def fetch_nse_loop():
                             for sym,d in snap.items():
                                 if is_index(sym):continue
                                 if orb.trades_today>=orb.config["MAX_TRADES_DAY"]:break
+                                if len(om.positions)>=orb.config["MAX_TRADES_DAY"]:break
                                 if signals_placed>=1:break
                                 ltp=d.get("ltp",0)
                                 if ltp<=0:continue
@@ -891,7 +893,8 @@ def start_trial():
     if _trial_timer:_trial_timer.cancel()
     def _stop_trial():
         orb.trial_mode=False
-        print("[TRIAL] Auto-stopped")
+        with orb.lock:orb.active_signals.clear()
+        print("[TRIAL] Auto-stopped — active signals cleared")
     _trial_timer=threading.Timer(duration*60,_stop_trial)
     _trial_timer.daemon=True;_trial_timer.start()
     return jsonify({"success":True,"seeded":seeded,"duration_min":duration,
@@ -901,8 +904,9 @@ def start_trial():
 def stop_trial():
     global _trial_timer
     orb.trial_mode=False
+    with orb.lock:orb.active_signals.clear()
     if _trial_timer:_trial_timer.cancel();_trial_timer=None
-    print("[TRIAL] Manually stopped")
+    print("[TRIAL] Manually stopped — active signals cleared")
     return jsonify({"success":True,"message":"Trial stopped"})
 
 @app.route("/api/config",methods=["GET"])
