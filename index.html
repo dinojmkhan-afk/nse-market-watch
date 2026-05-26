@@ -1624,6 +1624,12 @@ function _pinCancel(){
   _pinCode='';_pinCallback=null;
   document.getElementById('pinModal').classList.remove('show');
 }
+document.addEventListener('keydown',function(e){
+  if(!document.getElementById('pinModal').classList.contains('show'))return;
+  if(e.key>='0'&&e.key<='9')_pinKey(e.key);
+  else if(e.key==='Backspace')_pinClear();
+  else if(e.key==='Escape')_pinCancel();
+});
 
 // ── Boot ──────────────────────────────────────────────────────
 loadSettings();updateAlertPctHeader();loadAlertsFromServer();
