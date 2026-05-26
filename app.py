@@ -132,7 +132,9 @@ def reset_vwap():
 
 def save_prices_snapshot():
     try:
-        with lock: snap={s:{k:d[k] for k in ("ltp","change","change_pct","open","high","low","prev_close","vwap","volume_raw","value","range_pct") if k in d} for s,d in market_data.items() if d.get("ltp",0)>0}
+        # Never persist prev_close/change/change_pct — they are day-specific and must
+        # come from live NSE API each session. Stale snapshot values cause wrong DAY%.
+        with lock: snap={s:{k:d[k] for k in ("ltp","vwap","volume_raw","value","range_pct") if k in d} for s,d in market_data.items() if d.get("ltp",0)>0}
         with open(PRICES_SNAPSHOT,"w") as f: json.dump(snap,f)
     except Exception as e:
         print(f"[Prices] Snapshot save error: {e}")
@@ -142,10 +144,12 @@ def restore_prices_snapshot():
     try:
         with open(PRICES_SNAPSHOT) as f: snap=json.load(f)
         count=0
+        _stale_keys={"prev_close","change","change_pct","open","high","low"}
         with lock:
             for sym,prices in snap.items():
                 if sym in market_data:
-                    market_data[sym].update(prices);count+=1
+                    clean={k:v for k,v in prices.items() if k not in _stale_keys}
+                    market_data[sym].update(clean);count+=1
         print(f"[Prices] Restored last-known prices for {count} stocks")
     except Exception as e:
         print(f"[Prices] Snapshot restore error: {e}")
