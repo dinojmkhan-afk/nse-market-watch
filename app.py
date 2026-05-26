@@ -752,9 +752,11 @@ def index():
 
 @app.route("/api/status")
 def api_status():
+    now_ist=_ist();ist_mins=now_ist.hour*60+now_ist.minute
+    market_open=now_ist.weekday()<5 and 9*60<=ist_mins<=15*60+30
     return jsonify({"success":True,"server":"NSE Market Watch v3.0","client_id":CLIENT_ID,
         "logged_in":session_token is not None,"paper_mode":om.paper_mode,
-        "strategy_active":strategy_active,
+        "strategy_active":strategy_active,"market_open":market_open,
         "ws_connected":ws_engine.connected if ws_engine else False,
         "ws_state":ws_engine._get_state() if ws_engine else "DISCONNECTED",
         "ws_has_ticks":ws_has_live_ticks(),
@@ -990,6 +992,32 @@ def trigger_sl():
 
 @app.route("/api/orders/tradelog")
 def get_tradelog():return jsonify({"success":True,"trades":om.get_trade_log()})
+
+@app.route("/api/orders/today")
+def orders_today():
+    today=datetime.date.today().isoformat()
+    with om.lock:
+        open_pos=list(om.positions.values())
+        closed=list(om.daily_pnl.get(today,{}).get("trade_log",[]))
+    paper,real=[],[]
+    for p in open_pos:
+        ltp=p.get("last_ltp",p["entry_price"])
+        unreal=(ltp-p["entry_price"])*p["qty_remaining"] if p["direction"]=="BUY" else (p["entry_price"]-ltp)*p["qty_remaining"]
+        rec={"symbol":p["symbol"],"direction":p["direction"],"qty":p["qty"],
+            "qty_remaining":p["qty_remaining"],"entry_price":p["entry_price"],"exit_price":None,
+            "ltp":round(ltp,2),"sl_price":p["sl_price"],"target1":p["target1"],"target2":p["target2"],
+            "t1_done":p["t1_done"],"t2_done":p["t2_done"],"t3_done":p["t3_done"],
+            "entry_time":p["entry_time"],"exit_time":None,"status":"OPEN","reason":"",
+            "net_pnl":round(unreal,2),"gross_pnl":round(unreal,2),"charges":0,
+            "order_id":p.get("order_id",""),"product":p.get("product","I"),"paper_mode":p["paper_mode"]}
+        (paper if p["paper_mode"] else real).append(rec)
+    for t in closed:
+        rec=dict(t);rec.update({"qty_remaining":0,"ltp":t.get("exit_price",0),
+            "sl_price":None,"target1":None,"target2":None,
+            "t1_done":False,"t2_done":False,"t3_done":False,"status":"CLOSED","order_id":"","product":""})
+        (paper if t.get("paper_mode") else real).append(rec)
+    for lst in (paper,real):lst.sort(key=lambda x:x.get("entry_time",""),reverse=True)
+    return jsonify({"success":True,"paper":paper,"real":real,"date":today})
 
 @app.route("/api/pnl/daily")
 def daily_pnl():return jsonify({"success":True,"daily":om.get_daily_report(),"total":om.get_total_pnl()})

@@ -82,11 +82,14 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,san
 .tab-btn.tone-purple:hover{background:rgba(163,113,247,0.28);color:#e6d4ff;transform:translateY(-1px);}
 .tab-btn.tone-green:hover{background:rgba(63,185,80,0.26);color:#c8efca;transform:translateY(-1px);}
 .tab-btn.tone-gold:hover{background:rgba(210,153,34,0.3);color:#ffe092;transform:translateY(-1px);}
+.tab-btn.tone-orange{background:rgba(255,120,40,0.15);color:#ffb380;border-bottom-color:rgba(255,120,40,0.4);}
+.tab-btn.tone-orange:hover{background:rgba(255,120,40,0.28);color:#ffd0b0;transform:translateY(-1px);}
 /* Active — saturated background with strong contrast text */
 .tab-btn.tone-cyan.active{background:var(--accent);color:#001a22;border-bottom-color:var(--accent);box-shadow:0 -1px 12px rgba(0,212,255,0.4);}
 .tab-btn.tone-purple.active{background:var(--purple);color:#fff;border-bottom-color:var(--purple);box-shadow:0 -1px 12px rgba(163,113,247,0.45);}
 .tab-btn.tone-green.active{background:var(--green);color:#0a1f0d;border-bottom-color:var(--green);box-shadow:0 -1px 12px rgba(63,185,80,0.4);}
 .tab-btn.tone-gold.active{background:var(--gold);color:#1f1500;border-bottom-color:var(--gold);box-shadow:0 -1px 12px rgba(210,153,34,0.45);}
+.tab-btn.tone-orange.active{background:#ff7828;color:#1a0800;border-bottom-color:#ff7828;box-shadow:0 -1px 12px rgba(255,120,40,0.5);}
 /* Badges — visible on both inactive (dark) and active (light) backgrounds */
 .tab-badge{background:rgba(0,0,0,0.25);border:1px solid rgba(255,255,255,0.15);border-radius:10px;padding:1px 7px;font-size:0.6rem;color:inherit;font-weight:800;}
 .tab-btn.active .tab-badge{background:rgba(0,0,0,0.22);border-color:rgba(0,0,0,0.25);}
@@ -190,6 +193,28 @@ td{padding:7px 12px;font-size:0.75rem;white-space:nowrap;}
 .pnl-table th{background:var(--card);padding:8px 10px;text-align:left;color:var(--muted);font-size:0.65rem;text-transform:uppercase;border-bottom:2px solid var(--border);}
 .pnl-table td{padding:8px 10px;border-bottom:1px solid var(--border);}
 .pnl-table .total-row td{font-weight:700;background:var(--card);color:var(--accent);}
+
+/* ── Orders tab ── */
+.orders-section-hdr{font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;margin:0 0 10px;padding-bottom:6px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;}
+.orders-table{width:100%;border-collapse:collapse;font-size:0.72rem;}
+.orders-table th{background:var(--card);color:var(--muted);font-size:0.62rem;text-transform:uppercase;padding:7px 9px;text-align:center;border-bottom:2px solid var(--border);}
+.orders-table th:first-child{text-align:left;}
+.orders-table td{padding:7px 9px;text-align:center;border-bottom:1px solid var(--border);vertical-align:middle;}
+.orders-table td:first-child{text-align:left;}
+.orders-table tr:hover td{background:rgba(255,255,255,0.03);}
+.ord-badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:0.6rem;font-weight:800;letter-spacing:0.4px;}
+.ord-badge.open{background:rgba(0,212,255,0.18);color:var(--accent);}
+.ord-badge.closed{background:rgba(255,255,255,0.08);color:var(--muted);}
+.ord-badge.sl{background:rgba(255,80,80,0.2);color:#ff8080;}
+.ord-badge.t1{background:rgba(63,185,80,0.18);color:var(--green);}
+.ord-badge.t2{background:rgba(63,185,80,0.28);color:#6fff78;}
+.ord-badge.t3{background:rgba(63,185,80,0.38);color:#a8ffc0;}
+.ord-badge.force{background:rgba(255,120,40,0.2);color:#ffb380;}
+.ord-badge.manual{background:rgba(163,113,247,0.2);color:var(--purple);}
+.ord-dir-buy{color:var(--green);font-weight:800;}
+.ord-dir-sell{color:#ff7070;font-weight:800;}
+.orders-empty{text-align:center;color:var(--muted);padding:24px;font-size:0.78rem;}
+.orders-section{margin-bottom:28px;}
 
 /* ── Broker tab ── */
 .broker-funds-grid{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;}
@@ -338,6 +363,9 @@ td{padding:7px 12px;font-size:0.75rem;white-space:nowrap;}
   </button>
   <button class="tab-btn tone-green" id="tab-btn-broker" onclick="switchTab('broker',this)">
     <span class="tab-ico">🏦</span> Broker <span class="tab-badge" id="brokerTabBadge">0</span>
+  </button>
+  <button class="tab-btn tone-orange" id="tab-btn-orders" onclick="switchTab('orders',this)">
+    <span class="tab-ico">📋</span> Orders <span class="tab-badge" id="ordTabBadge">0</span>
   </button>
 </div>
 
@@ -531,6 +559,51 @@ td{padding:7px 12px;font-size:0.75rem;white-space:nowrap;}
   </div>
 </div>
 
+<!-- ══════════════════════════════════════════════
+     Tab 6 — Orders
+     ══════════════════════════════════════════════ -->
+<div class="tab-panel" id="tab-orders">
+  <div class="tab-content">
+
+    <!-- Paper trading orders -->
+    <div class="orders-section">
+      <div class="orders-section-hdr" style="color:#a3b8ff">
+        📄 Paper Trading Orders
+        <span id="paperOrdCount" style="color:var(--muted);font-weight:400;font-size:0.7rem"></span>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="orders-table">
+          <thead><tr>
+            <th>Time</th><th>Symbol</th><th>Dir</th><th>Qty</th>
+            <th>Entry</th><th>Exit / LTP</th><th>SL</th><th>Targets</th>
+            <th>Status</th><th>Net P&amp;L</th>
+          </tr></thead>
+          <tbody id="paperOrdBody"><tr><td colspan="10" class="orders-empty">No paper orders today</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Real money orders -->
+    <div class="orders-section">
+      <div class="orders-section-hdr" style="color:#ffb380">
+        💰 Real Money Orders
+        <span id="realOrdCount" style="color:var(--muted);font-weight:400;font-size:0.7rem"></span>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="orders-table">
+          <thead><tr>
+            <th>Time</th><th>Symbol</th><th>Dir</th><th>Qty</th>
+            <th>Entry</th><th>Exit / LTP</th><th>SL</th><th>Targets</th>
+            <th>Status</th><th>Net P&amp;L</th>
+          </tr></thead>
+          <tbody id="realOrdBody"><tr><td colspan="10" class="orders-empty">No real orders today</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
 <!-- ── Order modal ── -->
 <div class="overlay" id="orderModal">
   <div class="modal">
@@ -592,6 +665,7 @@ function switchTab(name, btn){
   if(name==='positions')loadPositions();
   if(name==='pnl')fetchPnLReport();
   if(name==='broker')fetchBrokerData();
+  if(name==='orders')fetchTodayOrders();
 }
 
 // ── Core state ────────────────────────────────────────────────
@@ -816,6 +890,32 @@ async function fetchData(){
   }catch(e){console.log("fetchData err",e);}
 }
 
+var marketOpen=true;
+var _ivData,_ivPos,_ivPnL,_ivSig,_ivBroker,_ivStatus;
+var _ivOrders;
+function _startIntervals(open){
+  clearInterval(_ivData);clearInterval(_ivPos);clearInterval(_ivPnL);
+  clearInterval(_ivSig);clearInterval(_ivBroker);clearInterval(_ivStatus);clearInterval(_ivOrders);
+  if(open){
+    _ivData=setInterval(fetchData,5000);
+    _ivPos=setInterval(fetchPositions,10000);
+    _ivPnL=setInterval(fetchTodayPnL,15000);
+    _ivSig=setInterval(fetchSignals,30000);
+    _ivBroker=setInterval(fetchBrokerData,30000);
+    _ivOrders=setInterval(fetchTodayOrders,15000);
+    _ivStatus=setInterval(fetchStatus,10000);
+  } else {
+    // Market closed — minimal polling to stay in sync without hammering server
+    _ivData=setInterval(fetchData,120000);
+    _ivPos=setInterval(fetchPositions,120000);
+    _ivPnL=setInterval(fetchTodayPnL,120000);
+    _ivSig=setInterval(fetchSignals,300000);
+    _ivBroker=setInterval(fetchBrokerData,300000);
+    _ivOrders=setInterval(fetchTodayOrders,120000);
+    _ivStatus=setInterval(fetchStatus,30000);
+  }
+}
+
 async function fetchStatus(){
   try{
     var r=await fetch(SRV+"/api/status"),d=await r.json();
@@ -844,6 +944,9 @@ async function fetchStatus(){
       var btn=document.getElementById("stratBtn");
       btn.textContent=strategyOn?"⚡ Strategy ON":"⚡ Strategy OFF";
       btn.className="strat-btn "+(strategyOn?"strat-on":"strat-off");
+      // Adapt polling rate when market open/closed state changes
+      var nowOpen=!!d.market_open;
+      if(nowOpen!==marketOpen){marketOpen=nowOpen;_startIntervals(marketOpen);}
     }
   }catch(e){}
 }
@@ -1364,14 +1467,78 @@ function renderBrokerPositions(positions){
   }).join('');
 }
 
+// ── Orders tab ───────────────────────────────────────────────
+async function fetchTodayOrders(){
+  try{
+    var r=await fetch(SRV+'/api/orders/today'),d=await r.json();
+    if(!d.success)return;
+    renderOrdersTable(d.paper||[],'paperOrdBody','paperOrdCount');
+    renderOrdersTable(d.real||[],'realOrdBody','realOrdCount');
+    var total=(d.paper||[]).length+(d.real||[]).length;
+    var badge=document.getElementById('ordTabBadge');
+    badge.textContent=total||'';
+    badge.className='tab-badge'+(total>0?' has-data':'');
+  }catch(e){console.log('fetchTodayOrders err',e);}
+}
+
+function _ordStatusBadge(o){
+  var r=o.reason||'';var s=o.status||'';
+  if(s==='OPEN')return'<span class="ord-badge open">OPEN</span>';
+  if(r==='SL_HIT')return'<span class="ord-badge sl">SL HIT</span>';
+  if(r==='T1_HIT')return'<span class="ord-badge t1">T1 HIT</span>';
+  if(r==='T2_HIT')return'<span class="ord-badge t2">T2 HIT</span>';
+  if(r==='T3_HIT')return'<span class="ord-badge t3">T3 HIT</span>';
+  if(r.includes('FORCE'))return'<span class="ord-badge force">FORCE EXIT</span>';
+  if(r==='MANUAL')return'<span class="ord-badge manual">MANUAL</span>';
+  return'<span class="ord-badge closed">'+(r||'CLOSED')+'</span>';
+}
+
+function _fmtTime(iso){
+  if(!iso)return'--';
+  try{var d=new Date(iso);return d.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});}catch(e){return iso.slice(11,19)||'--';}
+}
+
+function renderOrdersTable(orders,tbodyId,countId){
+  var tbody=document.getElementById(tbodyId);
+  var countEl=document.getElementById(countId);
+  if(countEl)countEl.textContent='('+orders.length+')';
+  if(!orders.length){
+    tbody.innerHTML='<tr><td colspan="10" class="orders-empty">No orders today</td></tr>';return;
+  }
+  tbody.innerHTML=orders.map(function(o){
+    var isOpen=o.status==='OPEN';
+    var dirCls=o.direction==='BUY'?'ord-dir-buy':'ord-dir-sell';
+    var pnlCol=o.net_pnl>=0?'var(--green)':'var(--red)';
+    var pnlSign=o.net_pnl>=0?'+':'';
+    var tgts='';
+    if(o.target1!=null){
+      tgts='<span style="color:'+(o.t1_done?'var(--green)':'var(--muted)')+'">T1:'+parseFloat(o.target1).toFixed(2)+'</span>';
+      if(o.target2!=null)tgts+=' <span style="color:'+(o.t2_done?'var(--green)':'var(--muted)')+'">T2:'+parseFloat(o.target2).toFixed(2)+'</span>';
+    } else {tgts='<span style="color:var(--muted)">--</span>';}
+    var exitOrLtp=isOpen
+      ?(o.ltp?'<span style="color:var(--accent)">'+parseFloat(o.ltp).toFixed(2)+'</span>':'--')
+      :(o.exit_price?parseFloat(o.exit_price).toFixed(2):'--');
+    var exitTime=isOpen?'':(o.exit_time?'<div style="font-size:0.58rem;color:var(--muted)">'+_fmtTime(o.exit_time)+'</div>':'');
+    return'<tr>'+
+      '<td style="font-size:0.65rem;color:var(--muted)">'+_fmtTime(o.entry_time)+'</td>'+
+      '<td style="font-weight:700">'+o.symbol+'</td>'+
+      '<td class="'+dirCls+'">'+o.direction+'</td>'+
+      '<td>'+(isOpen?(o.qty_remaining+' / '+o.qty):o.qty)+'</td>'+
+      '<td>'+parseFloat(o.entry_price).toFixed(2)+'</td>'+
+      '<td>'+exitOrLtp+exitTime+'</td>'+
+      '<td style="color:var(--red)">'+(o.sl_price!=null?parseFloat(o.sl_price).toFixed(2):'--')+'</td>'+
+      '<td style="font-size:0.65rem">'+tgts+'</td>'+
+      '<td>'+_ordStatusBadge(o)+'</td>'+
+      '<td style="color:'+pnlCol+';font-weight:700">'+(o.status==='OPEN'?'~':'')+pnlSign+'Rs '+Math.abs(o.net_pnl).toFixed(2)+'</td>'+
+    '</tr>';
+  }).join('');
+}
+
 // ── Boot ──────────────────────────────────────────────────────
-loadSettings();updateAlertPctHeader();fetchStatus();fetchData();fetchTodayPnL();loadAlertsFromServer();fetchBrokerData();
-setInterval(fetchData,5000);
-setInterval(fetchStatus,10000);
-setInterval(fetchTodayPnL,15000);
-setInterval(fetchSignals,30000);
-setInterval(fetchPositions,10000);
-setInterval(fetchBrokerData,30000);
+loadSettings();updateAlertPctHeader();loadAlertsFromServer();
+// Fetch status first to determine market open/closed, then start adaptive intervals
+fetchStatus().then(()=>_startIntervals(marketOpen));
+fetchData();fetchTodayPnL();fetchBrokerData();fetchTodayOrders();
 </script>
 </body>
 </html>
