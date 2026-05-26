@@ -225,6 +225,7 @@ class ORBStrategy:
             "time":datetime.datetime.now().isoformat()}
     def can_trade(self):
         if self.trading_stopped:return False,self.stop_reason
+        if self.trial_mode:return True,""  # bypass all daily limits in trial mode
         cap=self.config["CAPITAL"];ml=cap*self.config["MAX_DAILY_LOSS_PCT"]
         if self.trades_today>=self.config["MAX_TRADES_DAY"]:return False,"Max trades reached"
         if self.daily_pnl<=-ml:self._stop(f"Daily loss limit Rs {ml}");return False,self.stop_reason

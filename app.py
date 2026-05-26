@@ -457,7 +457,7 @@ def on_candle_close(sym,candle):
         return
     orb.record_candle_volume(sym,candle.get("volume",0))
     if orb._is_trade_time():
-        if len(om.positions)>=orb.config["MAX_TRADES_DAY"]:return
+        if not orb.trial_mode and len(om.positions)>=orb.config["MAX_TRADES_DAY"]:return
         nifty_chg=market_data.get("NIFTY 100",{}).get("change_pct",0)
         orb.update_nifty(nifty_chg,_ist())
         can,_=orb.can_trade()
@@ -648,8 +648,8 @@ def fetch_nse_loop():
                             signals_placed=0
                             for sym,d in snap.items():
                                 if is_index(sym):continue
-                                if orb.trades_today>=orb.config["MAX_TRADES_DAY"]:break
-                                if len(om.positions)>=orb.config["MAX_TRADES_DAY"]:break
+                                if not orb.trial_mode and orb.trades_today>=orb.config["MAX_TRADES_DAY"]:break
+                                if not orb.trial_mode and len(om.positions)>=orb.config["MAX_TRADES_DAY"]:break
                                 if signals_placed>=1:break
                                 ltp=d.get("ltp",0)
                                 if ltp<=0:continue
