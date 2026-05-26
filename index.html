@@ -253,6 +253,16 @@ td{padding:7px 12px;font-size:0.75rem;white-space:nowrap;}
 .modal-btns button{flex:1;padding:8px;border-radius:6px;border:none;font-size:0.8rem;font-weight:700;cursor:pointer;}
 .confirm-btn{background:var(--green);color:#000;}
 .cancel-btn{background:var(--border);color:var(--text);}
+/* ── PIN modal ── */
+.pin-dots{display:flex;justify-content:center;gap:14px;margin-bottom:20px;}
+.pin-dots span{width:14px;height:14px;border-radius:50%;border:2px solid var(--muted);background:transparent;transition:background .15s,border-color .15s;}
+.pin-dots span.filled{background:var(--accent);border-color:var(--accent);}
+.pin-dots span.error{background:var(--red);border-color:var(--red);}
+.pin-pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:0 auto;max-width:220px;}
+.pin-pad button{padding:14px;font-size:1.1rem;font-weight:700;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--text);cursor:pointer;transition:background .15s;}
+.pin-pad button:hover{background:rgba(255,255,255,0.1);}
+.pin-pad button.pin-clr{font-size:0.85rem;color:var(--muted);}
+@keyframes pinShake{0%,100%{transform:translateX(0);}20%,60%{transform:translateX(-6px);}40%,80%{transform:translateX(6px);}}
 .modal-warning{font-size:0.65rem;color:var(--red);margin-top:8px;text-align:center;}
 
 /* ── Toast ── */
@@ -604,6 +614,32 @@ td{padding:7px 12px;font-size:0.75rem;white-space:nowrap;}
   </div>
 </div>
 
+<!-- ── PIN auth modal ── -->
+<div class="overlay" id="pinModal">
+  <div class="modal" style="max-width:300px;text-align:center">
+    <div class="modal-title" id="pinTitle" style="margin-bottom:6px">🔐 Enter PIN</div>
+    <div id="pinSubtitle" style="font-size:0.7rem;color:var(--muted);margin-bottom:18px"></div>
+    <div class="pin-dots" id="pinDots">
+      <span></span><span></span><span></span>
+    </div>
+    <div class="pin-pad">
+      <button onclick="_pinKey('1')">1</button>
+      <button onclick="_pinKey('2')">2</button>
+      <button onclick="_pinKey('3')">3</button>
+      <button onclick="_pinKey('4')">4</button>
+      <button onclick="_pinKey('5')">5</button>
+      <button onclick="_pinKey('6')">6</button>
+      <button onclick="_pinKey('7')">7</button>
+      <button onclick="_pinKey('8')">8</button>
+      <button onclick="_pinKey('9')">9</button>
+      <button onclick="_pinClear()" class="pin-clr">⌫</button>
+      <button onclick="_pinKey('0')">0</button>
+      <button onclick="_pinCancel()" class="pin-clr">✕</button>
+    </div>
+    <div id="pinError" style="font-size:0.68rem;color:var(--red);margin-top:10px;min-height:16px"></div>
+  </div>
+</div>
+
 <!-- ── Order modal ── -->
 <div class="overlay" id="orderModal">
   <div class="modal">
@@ -807,18 +843,17 @@ function updateCapitalDisplay(d){
 }
 
 function toggleStrategy(){
-  strategyOn=!strategyOn;
-  fetch(SRV+(strategyOn?"/api/strategy/start":"/api/strategy/stop"),{method:"POST"}).then(r=>r.json()).then(function(){
-    var btn=document.getElementById("stratBtn");
-    btn.textContent=strategyOn?"⚡ Strategy ON":"⚡ Strategy OFF";
-    btn.className="strat-btn "+(strategyOn?"strat-on":"strat-off");
-    if(strategyOn){
-      fetchSignals();
-      showToast("🤖 Auto-trading activated!","info");
-    } else {
-      showToast("Strategy stopped","info");
-    }
-    saveSettings();
+  var action=strategyOn?"Stop":"Start";
+  requirePin('🔐 Confirm Strategy '+action,'Enter PIN to '+(strategyOn?'stop':'activate')+' the strategy',function(){
+    strategyOn=!strategyOn;
+    fetch(SRV+(strategyOn?"/api/strategy/start":"/api/strategy/stop"),{method:"POST"}).then(r=>r.json()).then(function(){
+      var btn=document.getElementById("stratBtn");
+      btn.textContent=strategyOn?"⚡ Strategy ON":"⚡ Strategy OFF";
+      btn.className="strat-btn "+(strategyOn?"strat-on":"strat-off");
+      if(strategyOn){fetchSignals();showToast("🤖 Auto-trading activated!","info");}
+      else showToast("Strategy stopped","info");
+      saveSettings();
+    });
   });
 }
 
@@ -828,16 +863,18 @@ function togglePositions(){switchTab('positions',document.getElementById('tab-bt
 function togglePnLPanel(){switchTab('pnl',document.getElementById('tab-btn-pnl'));}
 
 function emergencyStop(){
-  if(!confirm("🛑 EMERGENCY STOP\n\nThis will:\n- Stop the strategy\n- EXIT ALL open positions immediately\n\nAre you sure?"))return;
-  fetch(SRV+"/api/emergency-stop",{method:"POST"}).then(r=>r.json()).then(function(d){
-    if(d.success){
-      showToast("🛑 "+(d.message||"Emergency stop done"),"error");
-      strategyOn=false;
-      var btn=document.getElementById("stratBtn");
-      btn.textContent="⚡ Strategy OFF";btn.className="strat-btn strat-off";
-      loadPositions();fetchTodayPnL();
-    }
-  }).catch(function(e){showToast("Error: "+e.message,"error");});
+  requirePin('🛑 Emergency Stop','Enter PIN to stop strategy and exit ALL positions',function(){
+    if(!confirm("🛑 EMERGENCY STOP\n\nThis will:\n- Stop the strategy\n- EXIT ALL open positions immediately\n\nAre you sure?"))return;
+    fetch(SRV+"/api/emergency-stop",{method:"POST"}).then(r=>r.json()).then(function(d){
+      if(d.success){
+        showToast("🛑 "+(d.message||"Emergency stop done"),"error");
+        strategyOn=false;
+        var btn=document.getElementById("stratBtn");
+        btn.textContent="⚡ Strategy OFF";btn.className="strat-btn strat-off";
+        loadPositions();fetchTodayPnL();
+      }
+    }).catch(function(e){showToast("Error: "+e.message,"error");});
+  });
 }
 
 async function fetchData(){
@@ -1333,24 +1370,27 @@ function fetchPositions(){loadPositions();}
 
 // ── Trial run ─────────────────────────────────────────────────
 var trialActive=false;
-async function toggleTrial(){
-  var btn=document.getElementById('trialBtn');
-  if(trialActive){
-    var r=await fetch(SRV+'/api/strategy/trial-stop',{method:'POST'});
-    var d=await r.json();
-    trialActive=false;
-    btn.textContent='🧪 Trial';btn.style.background='rgba(163,113,247,0.15)';btn.style.color='var(--purple)';
-    showToast('Trial stopped','info');
-  }else{
-    var r=await fetch(SRV+'/api/strategy/trial',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({duration:10})});
-    var d=await r.json();
-    if(d.success){
-      trialActive=true;
-      btn.textContent='🧪 Trial ON';btn.style.background='var(--purple)';btn.style.color='#fff';
-      showToast('🧪 '+d.message,'info');
-      fetchSignals();
-    }else showToast('Trial failed: '+(d.error||'unknown'),'error');
-  }
+function toggleTrial(){
+  var action=trialActive?'Stop Trial':'Start Trial';
+  requirePin('🧪 '+action,'Enter PIN to '+(trialActive?'stop':'start')+' trial mode',async function(){
+    var btn=document.getElementById('trialBtn');
+    if(trialActive){
+      var r=await fetch(SRV+'/api/strategy/trial-stop',{method:'POST'});
+      var d=await r.json();
+      trialActive=false;
+      btn.textContent='🧪 Trial';btn.style.background='rgba(163,113,247,0.15)';btn.style.color='var(--purple)';
+      showToast('Trial stopped','info');
+    }else{
+      var r=await fetch(SRV+'/api/strategy/trial',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({duration:10})});
+      var d=await r.json();
+      if(d.success){
+        trialActive=true;
+        btn.textContent='🧪 Trial ON';btn.style.background='var(--purple)';btn.style.color='#fff';
+        showToast('🧪 '+d.message,'info');
+        fetchSignals();
+      }else showToast('Trial failed: '+(d.error||'unknown'),'error');
+    }
+  });
 }
 
 async function clearTodayPnl(){
@@ -1532,6 +1572,55 @@ function renderOrdersTable(orders,tbodyId,countId){
       '<td style="color:'+pnlCol+';font-weight:700">'+(o.status==='OPEN'?'~':'')+pnlSign+'Rs '+Math.abs(o.net_pnl).toFixed(2)+'</td>'+
     '</tr>';
   }).join('');
+}
+
+// ── PIN authentication ────────────────────────────────────────
+var _pinCode='';var _pinCallback=null;var _PIN='718';
+function requirePin(title,subtitle,callback){
+  _pinCode='';_pinCallback=callback;
+  document.getElementById('pinTitle').textContent=title;
+  document.getElementById('pinSubtitle').textContent=subtitle;
+  document.getElementById('pinError').textContent='';
+  _pinUpdateDots();
+  document.getElementById('pinModal').classList.add('show');
+}
+function _pinUpdateDots(){
+  var dots=document.querySelectorAll('.pin-dots span');
+  dots.forEach(function(d,i){
+    d.className=i<_pinCode.length?'filled':'';
+  });
+}
+function _pinKey(k){
+  if(_pinCode.length>=3)return;
+  _pinCode+=k;
+  _pinUpdateDots();
+  if(_pinCode.length===3){
+    if(_pinCode===_PIN){
+      document.getElementById('pinModal').classList.remove('show');
+      _pinCode='';
+      if(_pinCallback){var cb=_pinCallback;_pinCallback=null;cb();}
+    } else {
+      // Wrong PIN — shake and clear
+      var dots=document.querySelectorAll('.pin-dots span');
+      dots.forEach(function(d){d.className='error';});
+      document.getElementById('pinError').textContent='Wrong PIN. Try again.';
+      document.querySelector('.pin-dots').style.animation='pinShake 0.4s ease';
+      setTimeout(function(){
+        document.querySelector('.pin-dots').style.animation='';
+        _pinCode='';_pinUpdateDots();
+        document.getElementById('pinError').textContent='';
+      },600);
+    }
+  }
+}
+function _pinClear(){
+  _pinCode=_pinCode.slice(0,-1);
+  _pinUpdateDots();
+  document.getElementById('pinError').textContent='';
+}
+function _pinCancel(){
+  _pinCode='';_pinCallback=null;
+  document.getElementById('pinModal').classList.remove('show');
 }
 
 // ── Boot ──────────────────────────────────────────────────────
