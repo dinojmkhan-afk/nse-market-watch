@@ -6,7 +6,7 @@ import random
 import threading
 import time
 import requests
-from flask import Flask,request,jsonify
+from flask import Flask,request,jsonify,redirect
 import sys
 sys.path.insert(0,os.path.dirname(__file__))
 from websocket_engine import FlattradeWebSocket
@@ -18,9 +18,9 @@ API_KEY="2b0413e59c324d94a6178efce8d8790b"
 API_SECRET="2026.11d611243f04456aadeca7d1cabe02a3aceed69c4d476e43"
 CLIENT_ID="FZ07236"
 FLATTRADE_AUTH_URL="https://authapi.flattrade.in/trade/apitoken"
-FLATTRADE_ORDER_URL="https://piconnect.flattrade.in/PiConnectTP/PlaceOrder"
-FLATTRADE_SEARCH_URL="https://piconnect.flattrade.in/PiConnectTP/SearchScrip"
-FLATTRADE_POS_URL="https://piconnect.flattrade.in/PiConnectTP/PositionBook"
+FLATTRADE_ORDER_URL="https://piconnect.flattrade.in/PiConnectAPI/PlaceOrder"
+FLATTRADE_SEARCH_URL="https://piconnect.flattrade.in/PiConnectAPI/SearchScrip"
+FLATTRADE_POS_URL="https://piconnect.flattrade.in/PiConnectAPI/PositionBook"
 STATE_FILE="/home/ubuntu/market-watch/.state.json"
 NSE_HEADERS={"User-Agent":"Mozilla/5.0","Accept":"application/json","Referer":"https://www.nseindia.com"}
 session_token=None;ws_engine=None;market_data={};lock=threading.Lock()  # vwap_data removed — orb owns VWAP
@@ -42,7 +42,11 @@ def load_state():
 def save_state(active):
     try:
         with open(STATE_FILE,'w') as f:
-            json.dump({"strategy_active":active,"capital":trading_config.get("CAPITAL",20000),"ui_settings":ui_settings},f)
+            json.dump({"strategy_active":active,"capital":trading_config.get("CAPITAL",20000),
+                "ui_settings":ui_settings,
+                "settings_saved":datetime.datetime.now().isoformat(),
+                "session_token":session_token,
+                "token_saved":datetime.datetime.now().isoformat()},f)
     except Exception as e:
         print(f"[State] Save error: {e}")
 
@@ -62,9 +66,47 @@ if isinstance(_state,dict) and "capital" in _state:
     print(f"[State] Capital restored: Rs {_state['capital']:,}")
 
 if isinstance(_state,dict) and "ui_settings" in _state:
-    ui_settings.update(_state["ui_settings"])
-    print(f"[State] UI settings restored: {ui_settings}")
+    saved=_state.get("ui_settings",{})
+    saved_time_str=_state.get("settings_saved","")
+    now=datetime.datetime.now()
+    reset_needed=False
+    if saved_time_str:
+        try:
+            saved_dt=datetime.datetime.fromisoformat(saved_time_str)
+            # Reset ap/am/aOn if saved on a previous day AND it is now past 8:00 AM
+            if saved_dt.date()<now.date() and now.hour>=8:
+                reset_needed=True
+        except:
+            reset_needed=True
+    if reset_needed:
+        # Keep atype (user preference for sound/visual) but reset alert thresholds and bell
+        saved_kept={"atype":saved.get("atype","sv")}
+        ui_settings.update(saved_kept)
+        print(f"[State] Alert settings reset for new day (saved {saved_time_str[:10]}), atype kept")
+    else:
+        ui_settings.update(saved)
+        print(f"[State] UI settings restored: ap={saved.get('ap','?')}% am={saved.get('am','?')}min")
 
+# Restore session token if saved today (Flattrade tokens are valid within the same trading day)
+def _restore_token():
+    global session_token,ws_engine
+    if not isinstance(_state,dict): return
+    saved_token=_state.get("session_token")
+    saved_time=_state.get("token_saved","")
+    if not saved_token or not saved_time: return
+    try:
+        saved_dt=datetime.datetime.fromisoformat(saved_time)
+        now=datetime.datetime.now()
+        # Only restore if saved today and before 4pm (tokens expire end of day)
+        if saved_dt.date()==now.date() and now.hour<16:
+            session_token=saved_token
+            print(f"[State] Session token restored from today ({saved_dt.strftime('%H:%M')})")
+        else:
+            print(f"[State] Saved token is from {saved_dt.date()} — skipping (stale)")
+    except Exception as e:
+        print(f"[State] Token restore error: {e}")
+
+_restore_token()
 orb=ORBStrategy(trading_config)
 om=OrderManager(CLIENT_ID,lambda:session_token,paper_mode=True)
 
@@ -107,6 +149,29 @@ def restore_prices_snapshot():
         print(f"[Prices] Restored last-known prices for {count} stocks")
     except Exception as e:
         print(f"[Prices] Snapshot restore error: {e}")
+
+def fetch_nifty_from_yahoo():
+    """Fetch Nifty 50 change% from Yahoo Finance — reliable fallback when NSE Nifty feed fails."""
+    try:
+        r=requests.get("https://query1.finance.yahoo.com/v8/finance/chart/%5ENSEI?interval=1d&range=1d",
+            headers={"User-Agent":"Mozilla/5.0"},timeout=8)
+        if r.status_code==200:
+            meta=r.json().get("chart",{}).get("result",[{}])[0].get("meta",{})
+            ltp=float(meta.get("regularMarketPrice") or 0)
+            prev=float(meta.get("chartPreviousClose") or meta.get("previousClose") or 0)
+            if ltp>0 and prev>0:
+                chg_pct=round((ltp-prev)/prev*100,3)
+                chg=round(ltp-prev,2)
+                with lock:
+                    market_data["NIFTY 100"]={"symbol":"NIFTY 100","ltp":ltp,
+                        "change_pct":chg_pct,"change":chg,
+                        "updated":datetime.datetime.now().isoformat()}
+                orb.update_nifty(chg_pct,_ist())
+                print(f"[Yahoo] Nifty {ltp:.2f} chg={chg_pct:+.3f}%")
+                return True
+    except Exception as e:
+        print(f"[Yahoo] Nifty fetch error: {e}")
+    return False
 
 def fetch_prices_from_yahoo():
     """Fetch last-traded prices from Yahoo Finance v8 chart — used when NSE is unavailable."""
@@ -415,7 +480,10 @@ def master_clock_loop():
                 threading.Thread(target=refresh_master_file,daemon=True).start()
                 orb.reset_daily();reset_vwap()
                 alert_store.clear()
-                print("[CLOCK] Alert store cleared at 8:00 AM")
+                # Reset alert thresholds (ap, am, aOn) — keep atype preference
+                ui_settings.update({"ap":"1","am":"5","aOn":False})
+                save_state(strategy_active)
+                print("[CLOCK] Alert settings reset to defaults at 8:00 AM")
                 daily_reset_done=True;or_finalized_today=False
                 print("[CLOCK] Daily reset at 8:00 AM")
             if h==9 and m==20 and s<=10 and not or_finalized_today and strategy_active:
@@ -495,7 +563,8 @@ def fetch_nse_loop():
                 nse_session=_make_nse_session();session_born=time.time()
                 print("[NSE] Session refreshed (10 min)")
             live=ws_has_live_ticks()
-            # --- Nifty 100 update (always, even in WS mode — needed for ORB Nifty gate) ---
+            # --- Nifty update: try NSE first, fall back to Yahoo (needed for ORB Nifty gate) ---
+            nifty_updated=False
             try:
                 r100=nse_session.get("https://www.nseindia.com/api/equity-stockIndices?index=NIFTY%20100",headers=NSE_HEADERS,timeout=5)
                 if r100.status_code==403:
@@ -504,18 +573,22 @@ def fetch_nse_loop():
                 elif r100.status_code==200:
                     for item in r100.json().get("data",[]):
                         if item.get("symbol")=="NIFTY 100":
+                            chg_pct=float(item.get("pChange",0) or 0)
                             with lock:
                                 market_data["NIFTY 100"]={"symbol":"NIFTY 100",
                                     "ltp":float(item.get("lastPrice",0) or 0),
-                                    "change_pct":float(item.get("pChange",0) or 0),
+                                    "change_pct":chg_pct,
                                     "change":float(item.get("change",0) or 0),
                                     "updated":datetime.datetime.now().isoformat()}
+                            orb.update_nifty(chg_pct,_ist())
+                            nifty_updated=True
                             break
             except Exception as e:
                 print(f"[NSE] Nifty100 error: {e}")
-            # Always push Nifty to ORB — use last known value if fetch failed
-            nifty_chg=market_data.get("NIFTY 100",{}).get("change_pct",0)
-            if nifty_chg!=0:orb.update_nifty(nifty_chg,_ist())
+            # Yahoo fallback — runs every 30s so ORB gate is never stale
+            if not nifty_updated:
+                fetch_nifty_from_yahoo()
+                nifty_updated=True
             # --- Stock price update (only when WS not live) ---
             if not live:
                 r500=nse_session.get("https://www.nseindia.com/api/equity-stockIndices?index=NIFTY%20500",headers=NSE_HEADERS,timeout=10)
@@ -567,7 +640,7 @@ def fetch_nse_loop():
                 elif 9*60+30<=mins_ist<=10*60+45:
                     if len(orb.or_data)>0:
                         nifty_chg=market_data.get("NIFTY 100",{}).get("change_pct",0)
-                        orb.update_nifty(nifty_chg,_ist())
+                        orb.update_nifty(nifty_chg,_ist())  # always update — freshness gate relies on timestamp
                         can,reason=orb.can_trade()
                         if can:
                             with lock:snap=dict(market_data)
@@ -613,6 +686,7 @@ def exchange_code(code):
         if data.get("token"):
             session_token=data["token"]
             print(f"[Auth] SUCCESS! Token: {session_token}",flush=True)
+            save_state(strategy_active)  # persist token to disk immediately
             ws_engine=FlattradeWebSocket(session_token,CLIENT_ID,on_tick,on_candle_close,on_vwap_update=orb.update_vwap)
             ws_engine.start()
             threading.Thread(target=start_ws_subscription,daemon=True).start()
@@ -666,7 +740,10 @@ def position_sync_loop():
 def index():
     code=request.args.get("code")
     if code and request.args.get("client"):
-        print(f"[Auth] Code: {code[:20]}...",flush=True);exchange_code(code)
+        print(f"[Auth] Code: {code[:20]}...",flush=True)
+        exchange_code(code)
+        # Redirect to clean URL — prevents code re-use if user refreshes the page
+        return redirect("/")
     return open(os.path.join(os.path.dirname(__file__),"index.html")).read(),200,{"Content-Type":"text/html"}
 
 @app.route("/api/status")
@@ -870,6 +947,88 @@ def export_pnl():
     csv+=f"TOTAL,{total['total_trades']},{total['total_wins']},{total['total_losses']},{total['win_rate']}%,{total['total_gross']},{total['total_charges']},{total['total_net']}\n"
     return csv,200,{"Content-Type":"text/csv","Content-Disposition":"attachment; filename=pnl_report.csv"}
 
+def _flattrade_get(path,extra={}):
+    """Generic Flattrade REST call. Returns parsed JSON or raises."""
+    if not session_token:raise RuntimeError("Not logged in")
+    payload={"uid":CLIENT_ID,"actid":CLIENT_ID,**extra}
+    jdata=f"jData={json.dumps(payload)}&jKey={session_token}"
+    r=requests.post(f"https://piconnect.flattrade.in/PiConnectAPI/{path}",
+        data=jdata,headers={"Content-Type":"application/x-www-form-urlencoded"},timeout=10)
+    return r.json()
+
+@app.route("/api/broker/orders")
+def broker_orders():
+    try:
+        data=_flattrade_get("OrderBook")
+        if isinstance(data,dict) and data.get("stat")=="Not_Ok":
+            return jsonify({"success":True,"orders":[],"message":data.get("emsg","")})
+        orders=[]
+        for o in (data if isinstance(data,list) else []):
+            orders.append({"order_id":o.get("norenordno"),"symbol":o.get("symname"),
+                "side":"BUY" if o.get("trantype")=="B" else "SELL",
+                "qty":int(o.get("qty",0)),"price":float(o.get("prc",0)),
+                "status":o.get("status"),"product":o.get("s_prdt_ali"),
+                "reject_reason":o.get("rejreason","").replace("RED:RULE:","").strip(),
+                "fill_qty":int(o.get("fillshares","0") or 0),
+                "avg_price":float(o.get("avgprc","0") or 0),
+                "time":o.get("norentm")})
+        return jsonify({"success":True,"orders":orders})
+    except RuntimeError as e:return jsonify({"success":False,"error":str(e)})
+    except Exception as e:return jsonify({"success":False,"error":str(e)})
+
+@app.route("/api/broker/tradebook")
+def broker_tradebook():
+    try:
+        data=_flattrade_get("TradeBook")
+        if isinstance(data,dict) and data.get("stat")=="Not_Ok":
+            return jsonify({"success":True,"trades":[],"message":data.get("emsg","")})
+        trades=[]
+        for t in (data if isinstance(data,list) else []):
+            trades.append({"order_id":t.get("norenordno"),"symbol":t.get("symname"),
+                "side":"BUY" if t.get("trantype")=="B" else "SELL",
+                "qty":int(t.get("qty",0)),"fill_price":float(t.get("flprc","0") or 0),
+                "fill_qty":int(t.get("fillshares","0") or 0),
+                "product":t.get("s_prdt_ali"),"time":t.get("fltm")})
+        return jsonify({"success":True,"trades":trades})
+    except RuntimeError as e:return jsonify({"success":False,"error":str(e)})
+    except Exception as e:return jsonify({"success":False,"error":str(e)})
+
+@app.route("/api/broker/funds")
+def broker_funds():
+    try:
+        data=_flattrade_get("Limits")
+        if data.get("stat")!="Ok":
+            return jsonify({"success":False,"error":data.get("emsg","Limits failed")})
+        cash=float(data.get("cash","0"))
+        payin=float(data.get("payin","0"))
+        used=float(data.get("marginused","0") or 0)
+        return jsonify({"success":True,"cash":round(cash,2),"payin":round(payin,2),
+            "used":round(used,2),"available":round(cash+payin-used,2),
+            "name":data.get("prfname","")})
+    except RuntimeError as e:return jsonify({"success":False,"error":str(e)})
+    except Exception as e:return jsonify({"success":False,"error":str(e)})
+
+@app.route("/api/broker/positions")
+def broker_positions():
+    try:
+        data=_flattrade_get("PositionBook")
+        if isinstance(data,dict) and data.get("stat")=="Not_Ok":
+            return jsonify({"success":True,"positions":[],"message":data.get("emsg","")})
+        positions=[]
+        for p in (data if isinstance(data,list) else []):
+            netqty=int(p.get("netqty","0") or 0)
+            if netqty==0:continue
+            entry=float(p.get("netupldprc","0") or 0)
+            ltp=float(p.get("lp","0") or 0)
+            pnl=float(p.get("rpnl","0") or 0)+(ltp-entry)*netqty if ltp and entry else 0
+            positions.append({"symbol":p.get("tsym","").replace("-EQ",""),
+                "qty":netqty,"entry_price":round(entry,2),"ltp":round(ltp,2),
+                "product":p.get("s_prdt_ali"),"unrealised_pnl":round(pnl,2),
+                "realised_pnl":round(float(p.get("rpnl","0") or 0),2)})
+        return jsonify({"success":True,"positions":positions})
+    except RuntimeError as e:return jsonify({"success":False,"error":str(e)})
+    except Exception as e:return jsonify({"success":False,"error":str(e)})
+
 @app.route("/api/ws/status")
 def ws_status():
     if ws_engine:return jsonify({"success":True,**ws_engine.status})
@@ -888,6 +1047,7 @@ def restart_ws():
 if __name__=="__main__":
     print("[Server] NSE Market Watch v3.0 starting...")
     def _startup():
+        global ws_engine
         time.sleep(5)
         fetch_asm_gsm_list()
         # Auto-load NSE top 500 at startup — no login needed
@@ -947,29 +1107,48 @@ if __name__=="__main__":
                 except Exception as e:
                     print(f"[Startup] Cache load error: {e}")
             if len(market_data) < 10:
-                print("[Startup] NSE unavailable — seeding 500 symbols from master file")
+                print("[Startup] NSE unavailable — seeding from master file sorted by last-known value")
                 import csv
+                # Load last-known values from snapshot for ranking
+                snap_values={}
+                if os.path.exists(PRICES_SNAPSHOT):
+                    try:
+                        with open(PRICES_SNAPSHOT) as f: snap=json.load(f)
+                        snap_values={s:float(d.get("value",0) or 0) for s,d in snap.items()}
+                    except Exception: pass
                 if os.path.exists(NSE_MASTER_FILE):
-                    count=0
+                    all_syms=[]
                     with open(NSE_MASTER_FILE,"r") as f:
                         reader=csv.reader(f)
                         next(reader)
                         for row in reader:
-                            if count>=500:break
                             if len(row)<6:continue
                             if row[0]=="NSE" and row[5].strip()=="EQ":
                                 sym=row[4].replace("-EQ","").strip()
-                                with lock:
-                                    if sym not in market_data:
-                                        market_data[sym]={"symbol":sym,"ltp":0,"vwap":0,
-                                            "volume_raw":0,"value":0,"change":0,"change_pct":0,
-                                            "dir":"","seeded":True}
-                                        count+=1
-                    print(f"[Startup] Seeded {count} symbols from master file")
+                                all_syms.append(sym)
+                    # Sort by last-known value descending; unknowns go to bottom
+                    all_syms.sort(key=lambda s:snap_values.get(s,0),reverse=True)
+                    count=0
+                    for sym in all_syms:
+                        if count>=500:break
+                        with lock:
+                            if sym not in market_data:
+                                market_data[sym]={"symbol":sym,"ltp":0,"vwap":0,
+                                    "volume_raw":0,"value":0,"change":0,"change_pct":0,
+                                    "dir":"","seeded":True}
+                                count+=1
+                    ranked=sum(1 for s in list(market_data)[:500] if snap_values.get(s,0)>0)
+                    print(f"[Startup] Seeded {count} symbols from master file ({ranked} ranked by last-known value)")
         restore_prices_snapshot()
         # Run Yahoo fetch if volume or range data is missing — covers fresh starts and snapshot gaps
         if not any(d.get("volume_raw",0)>0 for d in market_data.values()) or not any(d.get("range_pct",0)>0 for d in market_data.values()):
             threading.Thread(target=fetch_prices_from_yahoo,daemon=True).start()
+        # Auto-reconnect WS if we restored a token from today
+        if session_token and not ws_engine:
+            print("[Startup] Restoring WS with saved token...")
+            ws_engine=FlattradeWebSocket(session_token,CLIENT_ID,on_tick,on_candle_close,on_vwap_update=orb.update_vwap)
+            ws_engine.start()
+            threading.Thread(target=start_ws_subscription,daemon=True).start()
     threading.Thread(target=_startup,daemon=True).start()
     threading.Thread(target=master_clock_loop,daemon=True).start()
     print("[Server] Master clock started")

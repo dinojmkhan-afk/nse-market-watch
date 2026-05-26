@@ -1,7 +1,8 @@
 import datetime,threading,json,time,requests
 from collections import defaultdict
-FLATTRADE_URL="https://piconnect.flattrade.in/PiConnectTP/PlaceOrder"
-FLATTRADE_LIMITS_URL="https://piconnect.flattrade.in/PiConnectTP/Limits"
+FLATTRADE_URL="https://piconnect.flattrade.in/PiConnectAPI/PlaceOrder"
+FLATTRADE_LIMITS_URL="https://piconnect.flattrade.in/PiConnectAPI/Limits"
+FLATTRADE_ORDERHIST_URL="https://piconnect.flattrade.in/PiConnectAPI/SingleOrdHist"
 HISTORY_FILE="/home/ubuntu/market-watch/.trade_history.json"
 
 class OrderManager:
@@ -87,6 +88,35 @@ class OrderManager:
     def _paper(self,sym,direction,qty,price):
         print(f"[OM] PAPER FILLED: {direction} {qty} {sym} @ {price}")
         return{"success":True,"fill_price":price,"order_id":f"PAPER-{sym}-{int(time.time())}","paper":True}
+    def _poll_order_status(self,order_id,token,max_attempts=4,interval=2):
+        """Poll SingleOrdHist until terminal status or timeout. Returns (status_str, fill_price, reject_msg)."""
+        for attempt in range(max_attempts):
+            time.sleep(interval)
+            try:
+                payload={"uid":self.client_id,"norenordno":order_id}
+                jdata=f"jData={json.dumps(payload)}&jKey={token}"
+                r=requests.post(FLATTRADE_ORDERHIST_URL,data=jdata,
+                    headers={"Content-Type":"application/x-www-form-urlencoded"},timeout=5)
+                hist=r.json()
+                # Response is a list; last entry is most recent state
+                if isinstance(hist,list) and hist:
+                    latest=hist[0]  # newest-first — index 0 is most recent state
+                    status=latest.get("status","").upper()
+                    fill_price=float(latest.get("avgprc") or 0)
+                    reject_msg=latest.get("rejreason","")
+                    print(f"[OM] Order {order_id} poll {attempt+1}: status={status} fill={fill_price} reject={reject_msg}")
+                    if status in("COMPLETE","FILLED"):
+                        return status,fill_price or None,""
+                    if status in("REJECTED","CANCELED","CANCELLED"):
+                        return status,None,reject_msg
+                    # OPEN/TRIGGER PENDING — keep polling
+                elif isinstance(hist,dict) and hist.get("stat")=="Not_Ok":
+                    print(f"[OM] OrderHist error: {hist.get('emsg')}")
+                    break
+            except Exception as e:
+                print(f"[OM] Poll error attempt {attempt+1}: {e}")
+        return "OPEN",None,""  # still pending after all polls
+
     def _real(self,sym,direction,qty,price):
         try:
             token=self.get_token()
@@ -105,14 +135,26 @@ class OrderManager:
             try:resp=json.loads(raw)
             except:return{"success":False,"error":f"Bad response: {raw[:100]}","rejected":False}
             print(f"[OM] Real:{resp}")
-            if resp.get("stat")=="Ok":return{"success":True,"fill_price":price,"order_id":resp.get("norenordno",""),"paper":False}
-            emsg=resp.get("emsg","Order rejected")
-            # Check if MIS not allowed
-            mis_errors=["MIS not allowed","not allowed for intraday","product type not allowed",
-                       "scrip not allowed","asm","gsm","t2t","circuit","not eligible"]
-            is_mis_error=any(e.lower() in emsg.lower() for e in mis_errors)
-            print(f"[OM] REJECTED ({('MIS_NOT_ALLOWED' if is_mis_error else 'OTHER')}): {emsg}")
-            return{"success":False,"error":emsg,"rejected":True,"mis_not_allowed":is_mis_error}
+            if resp.get("stat")!="Ok":
+                emsg=resp.get("emsg","Order rejected")
+                mis_errors=["MIS not allowed","not allowed for intraday","product type not allowed",
+                           "scrip not allowed","asm","gsm","t2t","circuit","not eligible"]
+                is_mis_error=any(e.lower() in emsg.lower() for e in mis_errors)
+                print(f"[OM] REJECTED ({('MIS_NOT_ALLOWED' if is_mis_error else 'OTHER')}): {emsg}")
+                return{"success":False,"error":emsg,"rejected":True,"mis_not_allowed":is_mis_error}
+            order_id=resp.get("norenordno","")
+            # Poll for actual exchange status
+            status,fill_price,reject_msg=self._poll_order_status(order_id,token)
+            if status in("REJECTED","CANCELED","CANCELLED"):
+                mis_errors=["MIS not allowed","not allowed for intraday","product type not allowed",
+                           "scrip not allowed","asm","gsm","t2t","circuit","not eligible"]
+                is_mis_error=any(e.lower() in reject_msg.lower() for e in mis_errors)
+                print(f"[OM] EXCHANGE REJECTED ({('MIS_NOT_ALLOWED' if is_mis_error else 'OTHER')}): {reject_msg}")
+                return{"success":False,"error":reject_msg,"rejected":True,"mis_not_allowed":is_mis_error,"order_id":order_id}
+            fp=fill_price or price
+            pending=status=="OPEN"
+            if pending:print(f"[OM] Order {order_id} still OPEN after polling — treating as placed")
+            return{"success":True,"fill_price":fp,"order_id":order_id,"paper":False,"pending":pending}
         except requests.exceptions.Timeout:
             return{"success":False,"error":"Order timeout — check Flattrade app manually!","rejected":False}
         except requests.exceptions.ConnectionError:
@@ -158,9 +200,10 @@ class OrderManager:
             pos=self.positions.get(sym)
             if pos:self.exit_position(sym,pos["qty_remaining"],pos.get("last_ltp",pos["entry_price"]),reason)
     def update_ltp(self,sym,ltp):
-        if sym not in self.positions:return
-        pos=self.positions[sym];pos["last_ltp"]=ltp
-        if pos["status"]!="OPEN":return
+        with self.lock:
+            if sym not in self.positions:return
+            pos=self.positions[sym];pos["last_ltp"]=ltp
+            if pos["status"]!="OPEN":return
         if pos["direction"]=="BUY":self._chk_buy(sym,pos,ltp)
         else:self._chk_sell(sym,pos,ltp)
     def _chk_buy(self,sym,pos,ltp):

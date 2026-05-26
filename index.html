@@ -191,6 +191,22 @@ td{padding:7px 12px;font-size:0.75rem;white-space:nowrap;}
 .pnl-table td{padding:8px 10px;border-bottom:1px solid var(--border);}
 .pnl-table .total-row td{font-weight:700;background:var(--card);color:var(--accent);}
 
+/* ── Broker tab ── */
+.broker-funds-grid{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;}
+.broker-fund-card{background:var(--card);border-radius:8px;padding:10px 18px;flex:1;min-width:110px;border:1px solid var(--border);}
+.broker-fund-lbl{font-size:0.58rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.4px;}
+.broker-fund-val{font-size:1.05rem;font-weight:700;margin-top:4px;}
+.broker-section{margin-bottom:24px;}
+.broker-section-hdr{font-size:0.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.ord-status{display:inline-block;padding:2px 7px;border-radius:4px;font-size:0.6rem;font-weight:700;text-transform:uppercase;}
+.ord-ok{background:rgba(63,185,80,0.2);color:var(--green);}
+.ord-rej{background:rgba(248,81,73,0.18);color:var(--red);}
+.ord-open{background:rgba(0,212,255,0.15);color:var(--accent);}
+.ord-can{background:rgba(139,148,158,0.15);color:var(--muted);}
+.reject-reason{font-size:0.6rem;color:var(--red);opacity:0.8;max-width:240px;white-space:normal;line-height:1.3;}
+.broker-refresh-btn{padding:3px 10px;border-radius:6px;border:1px solid rgba(0,212,255,0.35);background:rgba(0,212,255,0.08);color:var(--accent);font-size:0.65rem;font-weight:700;cursor:pointer;}
+.broker-refresh-btn:hover{background:rgba(0,212,255,0.18);}
+
 /* ── Empty state ── */
 .empty-state{text-align:center;padding:48px 20px;color:var(--muted);font-size:0.82rem;}
 .empty-state-icon{font-size:2rem;margin-bottom:8px;opacity:0.5;}
@@ -231,6 +247,7 @@ td{padding:7px 12px;font-size:0.75rem;white-space:nowrap;}
 @media(max-width:600px){
   td,th{padding:5px 7px;font-size:0.67rem;}
   .hm{display:none!important;}
+  .hm-val{font-size:0.63rem;}
   .logo{font-size:0.82rem;letter-spacing:2px;}
   .clock{font-size:0.65rem;}
   .search-input{width:120px;}
@@ -253,7 +270,7 @@ td{padding:7px 12px;font-size:0.75rem;white-space:nowrap;}
 <!-- ── Header ── -->
 <div class="hdr">
   <span class="logo">
-    <img class="logo-icon" src="/static/icon.svg" alt="" onerror="this.style.display='none'">
+    <img class="logo-icon" src="/static/icon.svg" alt="">
     DINKHAN'S WATCH
   </span>
   <div class="hdr-right">
@@ -301,6 +318,7 @@ td{padding:7px 12px;font-size:0.75rem;white-space:nowrap;}
   <div class="pnl-item hide-sm"><span class="pnl-lbl">Open</span><span class="pnl-val" id="pnlOpen">0</span></div>
   <div class="pnl-item"><span class="pnl-lbl">Capital</span><span class="pnl-val pv-neu" id="pnlCapital">Rs 20,000</span></div>
   <div class="pnl-item"><span class="pnl-lbl">Buying Power</span><span class="pnl-val pv-neu" id="stBP">Rs 80,000</span></div>
+  <div class="pnl-item hide-sm" id="cashBarItem" style="display:none!important"><span class="pnl-lbl">Cash</span><span class="pnl-val pv-neu" id="brokerCashBar">--</span></div>
 </div>
 
 <!-- ── Tab navigation ── -->
@@ -316,6 +334,9 @@ td{padding:7px 12px;font-size:0.75rem;white-space:nowrap;}
   </button>
   <button class="tab-btn tone-purple" id="tab-btn-signals" onclick="switchTab('signals',this)">
     <span class="tab-ico">⚡</span> Signals <span class="tab-badge" id="sigTabBadge">0</span>
+  </button>
+  <button class="tab-btn tone-green" id="tab-btn-broker" onclick="switchTab('broker',this)">
+    <span class="tab-ico">🏦</span> Broker <span class="tab-badge" id="brokerTabBadge">0</span>
   </button>
 </div>
 
@@ -361,11 +382,10 @@ td{padding:7px 12px;font-size:0.75rem;white-space:nowrap;}
       <th onclick="sortBy('symbol')"># SYMBOL</th>
       <th onclick="sortBy('ltp')">LTP</th>
       <th onclick="sortBy('change_pct')">DAY% ▼</th>
-      <th onclick="sortBy('alert_pct')">ALERT%</th>
+      <th onclick="sortBy('recent_pct')" id="alertPctHdr">ALERT%</th>
       <th onclick="sortBy('alert_time')">ALERT TIME</th>
       <th onclick="sortBy('volume_raw')" class="hm">VOLUME</th>
-      <th onclick="sortBy('value')" class="hm">VALUE</th>
-      <th class="hm">52W%</th>
+      <th onclick="sortBy('value')" class="hm-val">VALUE</th>
       <th>CHART</th>
     </tr></thead>
     <tbody id="tb"></tbody></table>
@@ -439,6 +459,74 @@ td{padding:7px 12px;font-size:0.75rem;white-space:nowrap;}
   </div>
 </div>
 
+<!-- ══════════════════════════════════════════════
+     Tab 5 — Broker
+     ══════════════════════════════════════════════ -->
+<div class="tab-panel" id="tab-broker">
+  <div class="tab-content">
+
+    <!-- Funds -->
+    <div class="broker-section">
+      <div class="broker-section-hdr">
+        <span>💰 Funds &amp; Margin</span>
+        <button class="broker-refresh-btn" onclick="fetchBrokerData()">⟳ Refresh</button>
+      </div>
+      <div class="broker-funds-grid" id="brokerFundsGrid">
+        <div class="broker-fund-card"><div class="broker-fund-lbl">Available Cash</div><div class="broker-fund-val pv-neu" id="bfAvailable">--</div></div>
+        <div class="broker-fund-card"><div class="broker-fund-lbl">Cash Balance</div><div class="broker-fund-val" id="bfCash">--</div></div>
+        <div class="broker-fund-card"><div class="broker-fund-lbl">Margin Used</div><div class="broker-fund-val pv-neg" id="bfUsed">--</div></div>
+        <div class="broker-fund-card"><div class="broker-fund-lbl">Payin</div><div class="broker-fund-val" id="bfPayin">--</div></div>
+      </div>
+    </div>
+
+    <!-- Broker Positions -->
+    <div class="broker-section">
+      <div class="broker-section-hdr">
+        <span>📊 Broker Positions <span id="bPosCount" style="color:var(--muted);font-weight:400"></span></span>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="pnl-table" id="brokerPosTable">
+          <thead><tr>
+            <th>Symbol</th><th>Qty</th><th>Entry</th><th>LTP</th><th>Product</th><th>Unrealised P&L</th><th>Realised P&L</th>
+          </tr></thead>
+          <tbody id="brokerPosTbody"><tr><td colspan="7" class="empty-state" style="padding:20px">No broker positions</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Order Book -->
+    <div class="broker-section">
+      <div class="broker-section-hdr">
+        <span>📋 Today's Orders <span id="bOrdCount" style="color:var(--muted);font-weight:400"></span></span>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="pnl-table" id="brokerOrdTable">
+          <thead><tr>
+            <th>Time</th><th>Symbol</th><th>Side</th><th>Qty</th><th>Price</th><th>Filled</th><th>Avg Price</th><th>Product</th><th>Status</th><th>Reject Reason</th>
+          </tr></thead>
+          <tbody id="brokerOrdTbody"><tr><td colspan="10" class="empty-state" style="padding:20px">No orders today</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Trade Book -->
+    <div class="broker-section">
+      <div class="broker-section-hdr">
+        <span>✅ Trade Book <span id="bTrdCount" style="color:var(--muted);font-weight:400"></span></span>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="pnl-table" id="brokerTrdTable">
+          <thead><tr>
+            <th>Time</th><th>Symbol</th><th>Side</th><th>Qty</th><th>Fill Price</th><th>Product</th>
+          </tr></thead>
+          <tbody id="brokerTrdTbody"><tr><td colspan="6" class="empty-state" style="padding:20px">No trades today</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
 <!-- ── Order modal ── -->
 <div class="overlay" id="orderModal">
   <div class="modal">
@@ -499,6 +587,7 @@ function switchTab(name, btn){
   if(name==='signals')fetchSignals();
   if(name==='positions')loadPositions();
   if(name==='pnl')fetchPnLReport();
+  if(name==='broker')fetchBrokerData();
 }
 
 // ── Core state ────────────────────────────────────────────────
@@ -688,6 +777,8 @@ async function fetchData(){
         var apct=getAlertPct(s.symbol,ltp,mins);
         var threshold=parseFloat(document.getElementById("ap").value)||1;
         var crossed=Math.abs(apct)>=threshold;
+        // Always store live N-minute % change so column always shows it
+        s.recent_pct=priceHistory[s.symbol]&&priceHistory[s.symbol].length>=2?round2(apct):null;
         if(crossed){
           s.alert_pct_live=round2(apct);
           s.alert_dir_live=apct>=0?"UP":"DN";
@@ -848,10 +939,16 @@ function renderTable(){
     var sym=s.symbol,ltp=(s.ltp||0).toFixed(2),cp=s.change_pct||0;
     return "<tr class='"+rc+" "+fc+"' onclick='openChart(\""+sym+"\")'>"
       +"<td class='sym-cell'>"+sym+"</td><td>Rs "+ltp+"</td><td>"+pp(cp)+"</td>"
-      +"<td>"+(s.alerted&&s.alert_pct_live?pp(s.alert_pct_live):"-")+"</td>"
+      +"<td>"+(function(){
+          if(!s.alerted)return "<span style='color:var(--muted)'>--</span>";
+          var v=s.alert_pct_live!=null?s.alert_pct_live:s.recent_pct;
+          if(v===null||v===undefined)return "<span style='color:var(--muted)'>--</span>";
+          var col=v>0?"var(--green)":v<0?"var(--red)":"var(--muted)";
+          return "<span style='color:"+col+";font-weight:700'>"+(v>0?"+":"")+v+"%</span>";
+        })()+"</td>"
       +"<td style='font-size:11px;color:var(--muted)'>"+(s.alerted&&s.alert_time?s.alert_time:"-")+"</td>"
       +"<td class='hm'>"+(s.volume_raw?fv(s.volume_raw):"-")+"</td>"
-      +"<td class='hm'>"+(s.value?fv(s.value*1e7):"-")+"</td><td class='hm'>"+rb(s.range_pct||0)+"</td>"
+      +"<td class='hm-val'>"+(s.value?fv(s.value*1e7):"-")+"</td>"
       +"<td><button class='chart-btn' onclick='event.stopPropagation();openChart(\""+sym+"\")'>Chart</button></td></tr>";
   }).join("");
 }
@@ -926,6 +1023,12 @@ function triggerAlert(s){
 var toastTimer=null;
 function showToast(msg,type){var t=document.getElementById("toast");t.textContent=msg;t.className="toast show "+(type||"info");if(toastTimer)clearTimeout(toastTimer);toastTimer=setTimeout(function(){t.classList.remove("show");},3000);}
 
+function updateAlertPctHeader(){
+  var m=document.getElementById("am").value||"5";
+  var h=document.getElementById("alertPctHdr");
+  if(h)h.textContent=m+"MIN%";
+}
+
 function saveSettings(){
   var ui={
     ap:document.getElementById("ap").value,
@@ -935,6 +1038,7 @@ function saveSettings(){
   };
   fetch(SRV+"/api/config",{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({ui_settings:ui})}).catch(function(){});
+  updateAlertPctHeader();
 }
 
 function applyUISettings(ui){
@@ -942,6 +1046,7 @@ function applyUISettings(ui){
   if(ui.ap)document.getElementById("ap").value=ui.ap;
   if(ui.am)document.getElementById("am").value=ui.am;
   if(ui.atype)document.getElementById("atype").value=ui.atype;
+  updateAlertPctHeader();
   if(ui.aOn!==undefined){
     aOn=ui.aOn;
     var btn=document.getElementById("ab");
@@ -1118,13 +1223,120 @@ function loadPositions(){
 
 function fetchPositions(){loadPositions();}
 
+// ── Broker data ───────────────────────────────────────────────
+function fmtRs(v){return v===null||v===undefined?'--':'Rs '+parseFloat(v).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});}
+
+async function fetchBrokerData(){
+  try{
+    var [rf,ro,rt,rp]=await Promise.all([
+      fetch(SRV+'/api/broker/funds'),
+      fetch(SRV+'/api/broker/orders'),
+      fetch(SRV+'/api/broker/tradebook'),
+      fetch(SRV+'/api/broker/positions')
+    ]);
+    var [df,dord,dtrd,dpos]=await Promise.all([rf.json(),ro.json(),rt.json(),rp.json()]);
+    if(df.success)renderBrokerFunds(df);
+    if(dord.success)renderBrokerOrders(dord.orders||[]);
+    if(dtrd.success)renderBrokerTrades(dtrd.trades||[]);
+    if(dpos.success)renderBrokerPositions(dpos.positions||[]);
+    // Update badge with rejected count
+    var rejCount=(dord.orders||[]).filter(function(o){return o.status==='REJECTED';}).length;
+    var badge=document.getElementById('brokerTabBadge');
+    badge.textContent=rejCount||'';
+    badge.className='tab-badge'+(rejCount>0?' has-data':'');
+  }catch(e){console.log('fetchBrokerData err',e);}
+}
+
+function renderBrokerFunds(d){
+  document.getElementById('bfAvailable').textContent=fmtRs(d.available);
+  document.getElementById('bfCash').textContent=fmtRs(d.cash);
+  document.getElementById('bfUsed').textContent=fmtRs(d.used);
+  document.getElementById('bfPayin').textContent=fmtRs(d.payin);
+  // Also update P&L bar cash item
+  var cashBar=document.getElementById('brokerCashBar');
+  var cashItem=document.getElementById('cashBarItem');
+  if(cashBar){cashBar.textContent=fmtRs(d.available);}
+  if(cashItem){cashItem.style.cssText='display:flex!important';}
+}
+
+function statusChip(status){
+  if(!status)return'<span class="ord-status ord-open">--</span>';
+  var s=status.toUpperCase();
+  if(s==='COMPLETE'||s==='FILLED')return'<span class="ord-status ord-ok">'+s+'</span>';
+  if(s==='REJECTED')return'<span class="ord-status ord-rej">REJECTED</span>';
+  if(s==='OPEN'||s==='TRIGGER PENDING'||s==='PENDING')return'<span class="ord-status ord-open">'+s+'</span>';
+  if(s==='CANCELED'||s==='CANCELLED')return'<span class="ord-status ord-can">CANCELLED</span>';
+  return'<span class="ord-status ord-open">'+s+'</span>';
+}
+
+function renderBrokerOrders(orders){
+  document.getElementById('bOrdCount').textContent='('+orders.length+')';
+  var tbody=document.getElementById('brokerOrdTbody');
+  if(!orders.length){tbody.innerHTML='<tr><td colspan="10" class="empty-state" style="padding:20px">No orders today</td></tr>';return;}
+  tbody.innerHTML=orders.map(function(o){
+    var sideCol=o.side==='BUY'?'var(--green)':'var(--red)';
+    var reason=o.reject_reason?'<div class="reject-reason">'+o.reject_reason+'</div>':'--';
+    return'<tr>'+
+      '<td style="color:var(--muted);font-size:0.65rem">'+( o.time||'--')+'</td>'+
+      '<td style="font-weight:700">'+o.symbol+'</td>'+
+      '<td style="color:'+sideCol+';font-weight:700">'+o.side+'</td>'+
+      '<td>'+o.qty+'</td>'+
+      '<td>Rs '+parseFloat(o.price||0).toFixed(2)+'</td>'+
+      '<td>'+(o.fill_qty||0)+'</td>'+
+      '<td>'+(o.avg_price?'Rs '+parseFloat(o.avg_price).toFixed(2):'--')+'</td>'+
+      '<td style="color:var(--muted)">'+( o.product||'--')+'</td>'+
+      '<td>'+statusChip(o.status)+'</td>'+
+      '<td>'+reason+'</td>'+
+    '</tr>';
+  }).join('');
+}
+
+function renderBrokerTrades(trades){
+  document.getElementById('bTrdCount').textContent='('+trades.length+')';
+  var tbody=document.getElementById('brokerTrdTbody');
+  if(!trades.length){tbody.innerHTML='<tr><td colspan="6" class="empty-state" style="padding:20px">No trades today</td></tr>';return;}
+  tbody.innerHTML=trades.map(function(t){
+    var sideCol=t.side==='BUY'?'var(--green)':'var(--red)';
+    return'<tr>'+
+      '<td style="color:var(--muted);font-size:0.65rem">'+(t.time||'--')+'</td>'+
+      '<td style="font-weight:700">'+t.symbol+'</td>'+
+      '<td style="color:'+sideCol+';font-weight:700">'+t.side+'</td>'+
+      '<td>'+t.fill_qty+'</td>'+
+      '<td style="color:var(--gold);font-weight:700">Rs '+parseFloat(t.fill_price||0).toFixed(2)+'</td>'+
+      '<td style="color:var(--muted)">'+( t.product||'--')+'</td>'+
+    '</tr>';
+  }).join('');
+}
+
+function renderBrokerPositions(positions){
+  document.getElementById('bPosCount').textContent='('+positions.length+')';
+  var tbody=document.getElementById('brokerPosTbody');
+  if(!positions.length){tbody.innerHTML='<tr><td colspan="7" class="empty-state" style="padding:20px">No broker positions</td></tr>';return;}
+  tbody.innerHTML=positions.map(function(p){
+    var pnlCol=p.unrealised_pnl>=0?'var(--green)':'var(--red)';
+    var rpnlCol=p.realised_pnl>=0?'var(--green)':'var(--red)';
+    var sign=p.unrealised_pnl>=0?'+':'';
+    var rsign=p.realised_pnl>=0?'+':'';
+    return'<tr>'+
+      '<td style="font-weight:700">'+p.symbol+'</td>'+
+      '<td>'+p.qty+'</td>'+
+      '<td>Rs '+p.entry_price.toFixed(2)+'</td>'+
+      '<td style="color:var(--gold)">Rs '+p.ltp.toFixed(2)+'</td>'+
+      '<td style="color:var(--muted)">'+( p.product||'--')+'</td>'+
+      '<td style="color:'+pnlCol+';font-weight:700">'+sign+'Rs '+p.unrealised_pnl.toFixed(2)+'</td>'+
+      '<td style="color:'+rpnlCol+'">'+rsign+'Rs '+p.realised_pnl.toFixed(2)+'</td>'+
+    '</tr>';
+  }).join('');
+}
+
 // ── Boot ──────────────────────────────────────────────────────
-loadSettings();fetchStatus();fetchData();fetchTodayPnL();loadAlertsFromServer();
+loadSettings();updateAlertPctHeader();fetchStatus();fetchData();fetchTodayPnL();loadAlertsFromServer();fetchBrokerData();
 setInterval(fetchData,5000);
 setInterval(fetchStatus,10000);
 setInterval(fetchTodayPnL,15000);
 setInterval(fetchSignals,30000);
 setInterval(fetchPositions,10000);
+setInterval(fetchBrokerData,30000);
 </script>
 </body>
 </html>
