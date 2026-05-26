@@ -153,14 +153,14 @@ class ORBStrategy:
             baseline=sum(history)/len(history)
             rvol=vol/baseline if baseline>0 else 0
             if baseline>0 and rvol<rvol_min:
-                print(f"[ORB] {sym} RVOL={rvol:.2f} < {rvol_min} avg={baseline:.0f} skipped")
+                if not self.trial_mode:print(f"[ORB] {sym} RVOL={rvol:.2f} < {rvol_min} (vol={vol:.0f} avg={baseline:.0f}) skipped")
                 return None
         else:
-            # NSE polling mode: no candle history — bypass RVOL filter
+            # WS candle history < 2 — bypass RVOL filter using OR candle baseline
             baseline=self.avg_volumes.get(sym,0)
             rvol=rvol_min  # Default to minimum to pass filter
             if baseline<=0:return None  # No volume data — skip
-            print(f"[ORB] {sym} NSE-polling RVOL bypassed baseline={baseline:.0f}")
+            if not self.trial_mode:print(f"[ORB] {sym} RVOL bypassed (only {len(history)} candle{'s' if len(history)!=1 else ''}) baseline={baseline:.0f}")
         signal_strength="STRONG" if rvol>=self.config["RVOL_STRONG"] else "MEDIUM"
         # In trial mode bypass Nifty direction — allows signals in any market direction
         ng=self.trial_mode or self.nifty_change>0.1

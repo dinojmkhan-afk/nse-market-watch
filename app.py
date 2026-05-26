@@ -972,6 +972,22 @@ def exit_pos():
 @app.route("/api/orders/exit-all",methods=["POST"])
 def exit_all():om.exit_all("MANUAL");return jsonify({"success":True})
 
+@app.route("/api/test/trigger-sl",methods=["POST"])
+def trigger_sl():
+    """Push LTP past SL for a position to verify paper SL exit fires."""
+    sym=request.json.get("symbol","")
+    if sym not in om.positions:
+        return jsonify({"success":False,"error":f"{sym} not in positions"})
+    pos=om.positions[sym]
+    sl=pos["sl_price"]
+    # BUY: SL fires when ltp <= sl_price. SELL: fires when ltp >= sl_price
+    trigger_ltp=round(sl-0.05,2) if pos["direction"]=="BUY" else round(sl+0.05,2)
+    print(f"[TEST] Triggering SL for {sym} {pos['direction']} sl={sl} → ltp={trigger_ltp}")
+    om.update_ltp(sym,trigger_ltp)
+    closed=sym not in om.positions
+    return jsonify({"success":True,"symbol":sym,"direction":pos["direction"],
+        "sl_price":sl,"trigger_ltp":trigger_ltp,"position_closed":closed})
+
 @app.route("/api/orders/tradelog")
 def get_tradelog():return jsonify({"success":True,"trades":om.get_trade_log()})
 
