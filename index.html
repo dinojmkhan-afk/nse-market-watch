@@ -796,21 +796,23 @@ function doLogout(){
 }
 
 function setMode(paper){
-  if(!paper && !confirm('⚠️ SWITCH TO REAL MONEY MODE?\nThis will place REAL orders!\nAre you sure?'))return;
-  isPaper=paper;
   if(!paper){
-    fetch(SRV+"/api/status").then(r=>r.json()).then(function(s){
-      if(!s.ws_connected){
-        showToast("⚠️ WebSocket not connected! Real money trading blocked until WS connects.","error");
-        isPaper=true;updateModeBadge(true);return;
-      }
-      fetch(SRV+"/api/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({paper_mode:false})})
-      .then(r=>r.json()).then(function(d){updateModeBadge(false);updateCapitalDisplay(d);saveSettings();showToast("💰 Real Money Mode — USE CAUTION!","error");});
+    requirePin('💰 Real Money Mode','Enter PIN to switch — REAL orders will be placed',function(){
+      isPaper=false;
+      fetch(SRV+"/api/status").then(r=>r.json()).then(function(s){
+        if(!s.ws_connected){
+          showToast("⚠️ WebSocket not connected! Real money trading blocked until WS connects.","error");
+          isPaper=true;updateModeBadge(true);return;
+        }
+        fetch(SRV+"/api/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({paper_mode:false})})
+        .then(r=>r.json()).then(function(d){updateModeBadge(false);updateCapitalDisplay(d);saveSettings();showToast("💰 Real Money Mode — USE CAUTION!","error");});
+      });
     });
     return;
   }
-  fetch(SRV+"/api/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({paper_mode:paper})})
-  .then(r=>r.json()).then(function(d){updateModeBadge(paper);updateCapitalDisplay(d);saveSettings();showToast("📄 Paper Trading Mode","info");});
+  isPaper=true;
+  fetch(SRV+"/api/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({paper_mode:true})})
+  .then(r=>r.json()).then(function(d){updateModeBadge(true);updateCapitalDisplay(d);saveSettings();showToast("📄 Paper Trading Mode","info");});
 }
 
 function updateModeBadge(paper){
