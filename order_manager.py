@@ -78,7 +78,7 @@ class OrderManager:
                 "qty_remaining":qty,"entry_price":fp,"sl_price":sl,"target1":t1,"target2":t2,"target3":t3,
                 "t1_done":False,"t2_done":False,"t3_done":False,"status":"OPEN","paper_mode":self.paper_mode,
                 "entry_time":self._ist().isoformat(),"order_id":result.get("order_id","PAPER"),"last_ltp":fp,
-                "charges":self._charges(qty,fp,direction)}
+                "charges":self._charges(qty,fp,direction),"product":result.get("product","I")}
             with self.lock:self.positions[sym]=pos
             self._ensure_today()
             self.recent_orders[sym]=time.time()  # Record for cooldown
@@ -117,19 +117,22 @@ class OrderManager:
                 print(f"[OM] Poll error attempt {attempt+1}: {e}")
         return "OPEN",None,""  # still pending after all polls
 
-    def _real(self,sym,direction,qty,price):
+    _MIS_ERRORS=["mis not allowed","not allowed for intraday","product type not allowed",
+                 "scrip not allowed","asm","gsm","t2t","circuit","not eligible","allowed basket","basket"]
+
+    def _real(self,sym,direction,qty,price,prd="I"):
         try:
             token=self.get_token()
             if not token:return{"success":False,"error":"Not logged in"}
             import urllib.parse
             tsym=urllib.parse.quote(f"{sym}-EQ",safe="-")
             payload={"uid":self.client_id,"actid":self.client_id,"exch":"NSE","tsym":tsym,
-                "qty":str(qty),"prc":str(round(price*1.001,2)),"prd":"I",
+                "qty":str(qty),"prc":str(round(price*1.001,2)),"prd":prd,
                 "trantype":"B" if direction=="BUY" else "S","prctyp":"LMT","ret":"DAY","remarks":"ORB-Auto","ordersource":"API"}
             jdata=f"jData={json.dumps(payload)}&jKey={token}"
             r=requests.post(FLATTRADE_URL,data=jdata,headers={"Content-Type":"application/x-www-form-urlencoded"},timeout=10)
             raw=r.text.strip()
-            print(f"[OM] Real raw: {raw[:200]}")
+            print(f"[OM] Real raw ({prd}): {raw[:200]}")
             if not raw:
                 return{"success":False,"error":"No response from Flattrade — market may be closed","rejected":False}
             try:resp=json.loads(raw)
@@ -137,24 +140,27 @@ class OrderManager:
             print(f"[OM] Real:{resp}")
             if resp.get("stat")!="Ok":
                 emsg=resp.get("emsg","Order rejected")
-                mis_errors=["MIS not allowed","not allowed for intraday","product type not allowed",
-                           "scrip not allowed","asm","gsm","t2t","circuit","not eligible"]
-                is_mis_error=any(e.lower() in emsg.lower() for e in mis_errors)
+                is_mis_error=any(e in emsg.lower() for e in self._MIS_ERRORS)
                 print(f"[OM] REJECTED ({('MIS_NOT_ALLOWED' if is_mis_error else 'OTHER')}): {emsg}")
+                if is_mis_error and prd=="I":
+                    print(f"[OM] MIS rejected for {sym} — retrying as CNC")
+                    return self._real(sym,direction,qty,price,prd="C")
                 return{"success":False,"error":emsg,"rejected":True,"mis_not_allowed":is_mis_error}
             order_id=resp.get("norenordno","")
             # Poll for actual exchange status
             status,fill_price,reject_msg=self._poll_order_status(order_id,token)
             if status in("REJECTED","CANCELED","CANCELLED"):
-                mis_errors=["MIS not allowed","not allowed for intraday","product type not allowed",
-                           "scrip not allowed","asm","gsm","t2t","circuit","not eligible"]
-                is_mis_error=any(e.lower() in reject_msg.lower() for e in mis_errors)
+                is_mis_error=any(e in reject_msg.lower() for e in self._MIS_ERRORS)
                 print(f"[OM] EXCHANGE REJECTED ({('MIS_NOT_ALLOWED' if is_mis_error else 'OTHER')}): {reject_msg}")
+                if is_mis_error and prd=="I":
+                    print(f"[OM] MIS basket rejected for {sym} — retrying as CNC")
+                    return self._real(sym,direction,qty,price,prd="C")
                 return{"success":False,"error":reject_msg,"rejected":True,"mis_not_allowed":is_mis_error,"order_id":order_id}
             fp=fill_price or price
             pending=status=="OPEN"
             if pending:print(f"[OM] Order {order_id} still OPEN after polling — treating as placed")
-            return{"success":True,"fill_price":fp,"order_id":order_id,"paper":False,"pending":pending}
+            if prd=="C":print(f"[OM] Placed as CNC (MIS not allowed for {sym}) — will force-exit at 2:55PM")
+            return{"success":True,"fill_price":fp,"order_id":order_id,"paper":False,"pending":pending,"product":prd}
         except requests.exceptions.Timeout:
             return{"success":False,"error":"Order timeout — check Flattrade app manually!","rejected":False}
         except requests.exceptions.ConnectionError:
@@ -166,7 +172,7 @@ class OrderManager:
         if self.paper_mode:
             result={"success":True,"fill_price":price}
         else:
-            result=self._real(sym,exit_dir,qty,price)
+            result=self._real(sym,exit_dir,qty,price,prd=pos.get("product","I"))
             # Smart retry — network errors only
             if not result["success"]:
                 err=result.get("error","").lower()
