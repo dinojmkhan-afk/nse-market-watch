@@ -1161,6 +1161,7 @@ function renderPositions(positions){
     const pnlColor=rawPnl>=0?'var(--green)':'var(--red)';
     const pnlSign=rawPnl>=0?'+':'';
     const dirBadge=isBuy?"<span class='pos-badge badge-buy'>BUY</span>":"<span class='pos-badge badge-sell'>SELL</span>";
+    const prdBadge=p.product==='C'?"<span class='pos-badge' style='background:#1a237e;color:#90caf9'>CNC</span>":"<span class='pos-badge' style='background:#1b3a1b;color:#a5d6a7'>MIS</span>";
     let indicator='';
     if(p.t3_done) indicator="<span class='pos-badge badge-t3'>T3✓</span>";
     else if(p.t2_done) indicator="<span class='pos-badge badge-t2'>T2✓</span>";
@@ -1168,7 +1169,7 @@ function renderPositions(positions){
     const slColor=p.t1_done?'var(--green)':'var(--red)';
     const slLabel=p.t2_done?'SL=T1':p.t1_done?'SL=Entry':'SL';
     return '<tr>'+
-      '<td style="font-weight:800">'+p.symbol+dirBadge+indicator+'</td>'+
+      '<td style="font-weight:800">'+p.symbol+dirBadge+prdBadge+indicator+'</td>'+
       '<td style="color:var(--gold);font-weight:700">'+ltp.toFixed(2)+'</td>'+
       '<td>'+p.qty_remaining+'<span style="color:var(--muted);font-size:0.6rem">/'+p.qty+'</span></td>'+
       '<td style="color:'+(p.t1_done?'var(--muted)':'var(--green)')+';'+(p.t1_done?'text-decoration:line-through':'')+'">'+p.target1+'</td>'+

@@ -111,7 +111,7 @@ orb=ORBStrategy(trading_config)
 om=OrderManager(CLIENT_ID,lambda:session_token,paper_mode=True)
 
 orb.on_signal=lambda s:print(f"[APP] SIGNAL: {s['symbol']} {s['direction']}")
-om.on_fill=lambda p:print(f"[APP] FILLED: {p['symbol']} {p['direction']}")
+om.on_fill=lambda p:print(f"[APP] FILLED: {p['symbol']} {p['direction']} ({('CNC' if p.get('product')=='C' else 'MIS')})")
 om.on_exit=lambda p:(orb.record_trade_result(p.get("net_pnl",0)),print(f"[APP] CLOSED: {p['symbol']} PnL={p.get('net_pnl',0):+.2f}"))
 om.on_sl_hit=lambda s,l,p:print(f"[APP] SL HIT: {s}@{l}")
 om.on_target=lambda s,t,l,p:print(f"[APP] {t} HIT: {s}@{l}")
@@ -464,8 +464,7 @@ def on_candle_close(sym,candle):
         if signal:
             result=om.place_order(signal)
             if not result["success"]:
-                if result.get("mis_not_allowed"):print(f"[APP] {sym} NOT MIS ELIGIBLE")
-                else:print(f"[APP] Order failed {sym}: {result.get('error')}")
+                print(f"[APP] Order failed {sym}: {result.get('error')}")
                 orb.active_signals.pop(sym,None)
 
 def master_clock_loop():
@@ -705,11 +704,13 @@ def sync_flattrade_positions():
         raw=r.text.strip()
         if not raw:return
         data=json.loads(raw)
-        if data.get("stat")!="Ok":return
-        for pos in (data.get("data",[]) or []):
+        # PositionBook returns a list when positions exist, dict with stat=Not_Ok when empty
+        if not isinstance(data,list):return
+        for pos in data:
             sym=pos.get("tsym","").replace("-EQ","")
             netqty=int(pos.get("netqty","0") or 0)
-            if not sym or pos.get("prd")!="I":continue
+            prd=pos.get("prd","")
+            if not sym or prd not in("I","C"):continue  # sync both MIS and CNC positions
             if netqty==0:
                 if sym in om.positions:del om.positions[sym]
                 continue

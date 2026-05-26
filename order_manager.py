@@ -127,8 +127,8 @@ class OrderManager:
             import urllib.parse
             tsym=urllib.parse.quote(f"{sym}-EQ",safe="-")
             payload={"uid":self.client_id,"actid":self.client_id,"exch":"NSE","tsym":tsym,
-                "qty":str(qty),"prc":str(round(price*1.001,2)),"prd":prd,
-                "trantype":"B" if direction=="BUY" else "S","prctyp":"LMT","ret":"DAY","remarks":"ORB-Auto","ordersource":"API"}
+                "qty":str(qty),"prc":"0","prd":prd,
+                "trantype":"B" if direction=="BUY" else "S","prctyp":"MKT","ret":"DAY","remarks":"ORB-Auto","ordersource":"API"}
             jdata=f"jData={json.dumps(payload)}&jKey={token}"
             r=requests.post(FLATTRADE_URL,data=jdata,headers={"Content-Type":"application/x-www-form-urlencoded"},timeout=10)
             raw=r.text.strip()
