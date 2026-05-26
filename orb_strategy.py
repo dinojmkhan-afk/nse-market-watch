@@ -16,6 +16,7 @@ class ORBStrategy:
         self.consecutive_loss=0;self.daily_pnl=0
         self.trading_stopped=False;self.stop_reason=""
         self.on_signal=None;self.on_stop=None
+        self.trial_mode=False  # bypasses all time/freshness restrictions
         # Fix 3: Internal VWAP tracking
         self.vwap_data={}
         # Fix 2: Nifty staleness tracking
@@ -25,9 +26,11 @@ class ORBStrategy:
         return datetime.datetime.now(datetime.timezone.utc).astimezone(datetime.timezone(datetime.timedelta(hours=5,minutes=30)))
     def _mins(self,dt):return dt.hour*60+dt.minute
     def _is_or_build_time(self):
+        if self.trial_mode:return True
         n=self._mins(self._ist())
         return self.config["OR_START_H"]*60+self.config["OR_START_M"]<=n<self.config["OR_END_H"]*60+self.config["OR_END_M"]
     def _is_trade_time(self):
+        if self.trial_mode:return True
         ist=self._ist()
         if ist.weekday()>=5:return False  # Gap 11: No trading on weekends
         n=self._mins(ist)
@@ -43,7 +46,7 @@ class ORBStrategy:
         self.last_nifty_update=timestamp or self._ist()
 
     def _is_nifty_fresh(self):
-        """Fix 2: Reject if Nifty data > 10 seconds old"""
+        if self.trial_mode:return True
         if self.last_nifty_update is None:return False
         age=(self._ist()-self.last_nifty_update).total_seconds()
         if age>30:
@@ -99,11 +102,10 @@ class ORBStrategy:
                     o["size"]=round(sz,2)
                     o["size_pct"]=round((sz/o["low"])*100 if o["low"]>0 else 0,2)
                     o["built"]=True
-                    # Fix 8: Use rolling average if available
-                    if len(self.volume_history[sym])>=2:
-                        self.avg_volumes[sym]=sum(self.volume_history[sym])/len(self.volume_history[sym])
-                    else:
-                        self.avg_volumes[sym]=o["volume"]
+                    # Seed volume history with OR candle volume only — clears any tick-level
+                    # volumes accumulated during 9:15–9:20 so WS candle volumes start clean
+                    self.volume_history[sym]=[o["volume"]]
+                    self.avg_volumes[sym]=o["volume"]
                     count+=1
             print(f"[ORB] Master clock finalized {count} OR ranges, skipped {skipped} invalid at 9:20!")
 
@@ -160,16 +162,16 @@ class ORBStrategy:
             if baseline<=0:return None  # No volume data — skip
             print(f"[ORB] {sym} NSE-polling RVOL bypassed baseline={baseline:.0f}")
         signal_strength="STRONG" if rvol>=self.config["RVOL_STRONG"] else "MEDIUM"
-        # Fix 2: Use internal Nifty (freshness already checked above)
-        ng=self.nifty_change>0.1
-        nr=self.nifty_change<-0.1
+        # In trial mode bypass Nifty direction — allows signals in any market direction
+        ng=self.trial_mode or self.nifty_change>0.1
+        nr=self.trial_mode or self.nifty_change<-0.1
         # Fix 3: Internal VWAP + fallback to market_data
         vwap=self.get_vwap(sym)
         if vwap==0 and market_data:
             vwap=market_data.get(sym,{}).get("vwap",0)
         ist_now=datetime.datetime.now(datetime.timezone.utc).astimezone(datetime.timezone(datetime.timedelta(hours=5,minutes=30)))
         past_945=ist_now.hour*60+ist_now.minute>=9*60+45
-        if vwap==0 and past_945:
+        if vwap==0 and past_945 and not self.trial_mode:
             print(f"[ORB] {sym} VWAP unavailable after 9:45 skipping")
             return None
         vwap_ok_buy=vwap==0 or ltp>vwap
@@ -199,8 +201,8 @@ class ORBStrategy:
         # RRR validation minimum 1:1.5
         if sld>0:
             rr_check=abs(t1-ltp)/sld
-            if rr_check<1.5:
-                print(f"[ORB] {sym} RR={rr_check:.2f} < 1.5 skipped")
+            if rr_check<1.0:
+                print(f"[ORB] {sym} RR={rr_check:.2f} < 1.0 skipped")
                 return None
         elif sld==0:return None
         # Reject if SL > 2% of LTP (too wide)

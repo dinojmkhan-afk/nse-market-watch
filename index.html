@@ -292,6 +292,7 @@ td{padding:7px 12px;font-size:0.75rem;white-space:nowrap;}
   <div class="bar-sep"></div>
   <button class="strat-btn strat-off" id="stratBtn" onclick="toggleStrategy()">⚡ Strategy OFF</button>
   <button class="btn btn-red" onclick="emergencyStop()">🛑 Stop</button>
+  <button class="btn" id="trialBtn" onclick="toggleTrial()" style="background:rgba(163,113,247,0.15);border:1px solid rgba(163,113,247,0.5);color:var(--purple)">🧪 Trial</button>
   <div class="bar-sep"></div>
   <div class="capital-wrap">
     <span class="capital-label">Capital Rs</span>
@@ -1223,6 +1224,28 @@ function loadPositions(){
 }
 
 function fetchPositions(){loadPositions();}
+
+// ── Trial run ─────────────────────────────────────────────────
+var trialActive=false;
+async function toggleTrial(){
+  var btn=document.getElementById('trialBtn');
+  if(trialActive){
+    var r=await fetch(SRV+'/api/strategy/trial-stop',{method:'POST'});
+    var d=await r.json();
+    trialActive=false;
+    btn.textContent='🧪 Trial';btn.style.background='rgba(163,113,247,0.15)';btn.style.color='var(--purple)';
+    showToast('Trial stopped','info');
+  }else{
+    var r=await fetch(SRV+'/api/strategy/trial',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({duration:10})});
+    var d=await r.json();
+    if(d.success){
+      trialActive=true;
+      btn.textContent='🧪 Trial ON';btn.style.background='var(--purple)';btn.style.color='#fff';
+      showToast('🧪 '+d.message,'info');
+      fetchSignals();
+    }else showToast('Trial failed: '+(d.error||'unknown'),'error');
+  }
+}
 
 // ── Broker data ───────────────────────────────────────────────
 function fmtRs(v){return v===null||v===undefined?'--':'Rs '+parseFloat(v).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});}

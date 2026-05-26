@@ -448,8 +448,9 @@ def on_tick(tick):
 
 def on_candle_close(sym,candle):
     if not strategy_active:return
+    if orb.trial_mode and sym in orb.or_data:print(f"[TRIAL] Candle closed {sym} close={candle.get('close')} vol={candle.get('volume')}")
     now=_ist();h,m=now.hour,now.minute
-    if h==9 and 15<=m<=20:
+    if not orb.trial_mode and h==9 and 15<=m<=20:
         with orb.lock:
             orb.or_data[sym]={"high":candle["high"],"low":candle["low"],"volume":candle["volume"],"built":False}
         orb.finalize_or(sym,or_candle=candle)
@@ -625,18 +626,18 @@ def fetch_nse_loop():
             src="WS" if live else "NSE"
             print(f"[{src}] Update #{fetch_count} — {len(market_data)} stocks")
             if fetch_count%60==0: save_prices_snapshot()  # save every ~5 min
-            if strategy_active and not live:
+            if strategy_active and (not live or orb.trial_mode):
                 now=_ist();h_ist=now.hour;m_ist=now.minute;mins_ist=h_ist*60+m_ist
-                if h_ist==9 and 15<=m_ist<20:
+                if not orb.trial_mode and h_ist==9 and 15<=m_ist<20:
                     with lock:snap=dict(market_data)
                     for sym,d in snap.items():
                         if is_index(sym):continue
                         ltp=d.get("ltp",0)
                         if ltp>0:orb.process_or_tick(sym,ltp,d.get("volume_raw",0))
                     print(f"[ORB] Building OR from NSE... {m_ist}m")
-                elif h_ist==9 and m_ist==20:
+                elif not orb.trial_mode and h_ist==9 and m_ist==20:
                     pass  # Master clock owns OR finalization at 9:20 AM
-                elif 9*60+30<=mins_ist<=10*60+45:
+                elif 9*60+30<=mins_ist<=10*60+45 or orb.trial_mode:
                     if len(orb.or_data)>0:
                         nifty_chg=market_data.get("NIFTY 100",{}).get("change_pct",0)
                         orb.update_nifty(nifty_chg,_ist())  # always update — freshness gate relies on timestamp
@@ -861,6 +862,48 @@ def emergency_stop():
 @app.route("/api/strategy/signals")
 def api_signals():
     return jsonify({"success":True,"signals":list(orb.active_signals.values()),"count":len(orb.active_signals)})
+
+_trial_timer=None
+@app.route("/api/strategy/trial",methods=["POST"])
+def start_trial():
+    global strategy_active,_trial_timer
+    data=request.json or {}
+    duration=int(data.get("duration",10))  # minutes, default 10
+    # Seed OR data from current live prices
+    seeded=0
+    with orb.lock:
+        orb.or_data.clear()
+        orb.active_signals.clear()
+    for sym,stock in list(market_data.items()):
+        ltp=stock.get("ltp",0)
+        if not(orb.config["MIN_PRICE"]<=ltp<=orb.config["MAX_PRICE"]):continue
+        spread=round(ltp*0.004,2)  # 0.4% of price → size_pct≈0.4%, above OR_MIN_SIZE_PCT of 0.3%
+        hi=round(ltp+spread/2,2);lo=round(ltp-spread/2,2)
+        with orb.lock:
+            orb.or_data[sym]={"high":hi,"low":lo,"volume":int(stock.get("volume_raw",100000) or 100000),
+                "built":True,"size":spread,"size_pct":round((spread/lo)*100,2)}
+        if sym not in orb.avg_volumes:orb.avg_volumes[sym]=int(stock.get("volume_raw",100000) or 100000)
+        seeded+=1
+    orb.trial_mode=True
+    strategy_active=True
+    print(f"[TRIAL] Started — {seeded} OR ranges seeded, runs for {duration}min")
+    # Auto-stop after duration
+    if _trial_timer:_trial_timer.cancel()
+    def _stop_trial():
+        orb.trial_mode=False
+        print("[TRIAL] Auto-stopped")
+    _trial_timer=threading.Timer(duration*60,_stop_trial)
+    _trial_timer.daemon=True;_trial_timer.start()
+    return jsonify({"success":True,"seeded":seeded,"duration_min":duration,
+        "message":f"Trial active — {seeded} stocks armed, auto-stops in {duration}min"})
+
+@app.route("/api/strategy/trial-stop",methods=["POST"])
+def stop_trial():
+    global _trial_timer
+    orb.trial_mode=False
+    if _trial_timer:_trial_timer.cancel();_trial_timer=None
+    print("[TRIAL] Manually stopped")
+    return jsonify({"success":True,"message":"Trial stopped"})
 
 @app.route("/api/config",methods=["GET"])
 def get_config():

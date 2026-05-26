@@ -69,12 +69,12 @@ class FlattradeWebSocket:
                     print(f"[WS] Heartbeat err: {e}")
 
     def _watchdog_run(self):
-        """Reconnect if no ticks for 120 seconds during market hours"""
+        """Reconnect if no ticks for 45 seconds during market hours (catches OR-window drops fast)"""
         while not self._stop:
-            time.sleep(30)
+            time.sleep(15)
             if self._get_state()=="CONNECTED" and self._market_hours():
                 age=time.time()-self.last_tick_time
-                if age>120:
+                if age>45:
                     print(f"[WS] Watchdog: no ticks for {age:.0f}s — reconnecting")
                     self._set_state("DISCONNECTED")
                     if self.ws:
