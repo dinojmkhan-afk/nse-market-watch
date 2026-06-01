@@ -352,6 +352,8 @@ def simulate_day(date, sym_candles, nifty_chg, config):
 
             # Signal detection in trade window
             if not is_trade_window: continue
+            # Cap concurrent open positions — mirrors live strategy's len(om.positions) check
+            if len(active) >= config.get("MAX_TRADES_DAY", 4): continue
             ok, _ = orb.can_trade()
             if not ok: continue
             if sym in orb.active_signals: continue

@@ -7,7 +7,9 @@ CONFIG={"CAPITAL":20000,"RISK_PCT":0.005,"MAX_TRADES_DAY":4,"MAX_DAILY_LOSS_PCT"
     "OR_MIN_SIZE_PCT":0.3,"OR_MAX_SIZE_PCT":2.5,"VOLUME_MULTIPLIER":2.0,"NIFTY_GAP_LIMIT":1.5,"RVOL_MIN":1.5,"RVOL_STRONG":2.0,"MAX_POSITION_PCT":0.25,
     "T1_EXIT_PCT":0.40,"T2_EXIT_PCT":0.40,"T3_EXIT_PCT":0.20,
     "MIN_PRICE":100,"MAX_PRICE":10000,"MIN_VOLUME":1000000,"MAX_CONSECUTIVE_LOSS":2,
-    "SELL_RVOL_MIN":2.0,"VWAP_MEDIUM_MARGIN":0.002,"SL_DIRECTION_COOLDOWN_MINS":15}
+    "SELL_RVOL_MIN":2.0,"VWAP_MEDIUM_MARGIN":0.002,"SL_DIRECTION_COOLDOWN_MINS":15,
+    "SELL_SIGNALS_ENABLED":False,
+    "T1_MULT":1.0,"T2_MULT":2.0,"T3_MULT":3.5}
 class ORBStrategy:
     def __init__(self,config=None):
         self.config=config or CONFIG;self.lock=threading.Lock()
@@ -188,6 +190,9 @@ class ORBStrategy:
         if candle["close"]>o["high"] and ng and vwap_ok_buy:intended="BUY"
         elif candle["close"]<o["low"] and nr and vwap_ok_sell:intended="SELL"
         else:return None
+        # Global SELL disable — config-driven, bypassed in trial mode
+        if intended=="SELL" and not self.config.get("SELL_SIGNALS_ENABLED",True) and not self.trial_mode:
+            return None
         # B2: Block SELL on RVOL bypass — insufficient volume history for SHORT
         if intended=="SELL" and bypass_active and not self.trial_mode:
             print(f"[ORB] {sym} SELL blocked — RVOL bypass active (need ≥2 candles for SHORT)")
@@ -227,16 +232,19 @@ class ORBStrategy:
             return None
         # Risk = fixed % of capital — margin only gates max position size, NOT risk
         risk=cap*self.config["RISK_PCT"]
-        if direction=="BUY":sl=round(o["low"],2);t1=round(ltp+1.5*sz,2);t2=round(ltp+2.5*sz,2);t3=round(ltp+4*sz,2)
-        else:sl=round(o["high"],2);t1=round(ltp-1.5*sz,2);t2=round(ltp-2.5*sz,2);t3=round(ltp-4*sz,2)
+        # SL is OR boundary; targets are SL-distance multiples (1:1, 2:1, 3.5:1 R:R)
+        if direction=="BUY":sl=round(o["low"],2)
+        else:sl=round(o["high"],2)
         sld=abs(ltp-sl)
-        # RRR validation minimum 1:1.5
-        if sld>0:
-            rr_check=abs(t1-ltp)/sld
-            if rr_check<1.0:
-                print(f"[ORB] {sym} RR={rr_check:.2f} < 1.0 skipped")
-                return None
-        elif sld==0:return None
+        if sld==0:return None
+        t1m=self.config.get("T1_MULT",1.0);t2m=self.config.get("T2_MULT",2.0);t3m=self.config.get("T3_MULT",3.5)
+        if direction=="BUY":t1=round(ltp+t1m*sld,2);t2=round(ltp+t2m*sld,2);t3=round(ltp+t3m*sld,2)
+        else:t1=round(ltp-t1m*sld,2);t2=round(ltp-t2m*sld,2);t3=round(ltp-t3m*sld,2)
+        # RR gate: T1 = t1m × sld, so rr_check = t1m (always ≥ 1.0 with default t1m=1.0)
+        rr_check=abs(t1-ltp)/sld
+        if rr_check<1.0:
+            print(f"[ORB] {sym} RR={rr_check:.2f} < 1.0 skipped")
+            return None
         # Reject if SL > 2% of LTP (too wide)
         if sld>ltp*0.02:
             print(f"[ORB] {sym} SL too wide {sld:.2f}>{ltp*0.02:.2f} skipped")
