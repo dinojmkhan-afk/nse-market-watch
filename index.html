@@ -272,6 +272,49 @@ td{padding:7px 12px;font-size:0.75rem;white-space:nowrap;}
 .toast.error{border-color:var(--red);color:var(--red);}
 .toast.info{border-color:var(--accent);color:var(--accent);}
 
+/* ── Backtest tab ── */
+.bt-controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px;}
+.bt-run-btn{background:var(--accent);color:#001a22;border:none;padding:7px 20px;border-radius:8px;font-size:0.78rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;}
+.bt-run-btn:hover{background:#33deff;}
+.bt-run-btn:disabled{background:var(--border);color:var(--muted);cursor:not-allowed;}
+.bt-retry-btn{background:rgba(163,113,247,0.18);color:var(--purple);border:1px solid rgba(163,113,247,0.5);padding:6px 14px;border-radius:8px;font-size:0.72rem;font-weight:700;cursor:pointer;}
+.bt-progress{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 14px;flex:1;min-width:200px;}
+.bt-progress-bar{flex:1;height:6px;background:var(--border);border-radius:3px;overflow:hidden;}
+.bt-progress-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,var(--accent),var(--purple));transition:width .4s;}
+.bt-progress-text{font-size:0.68rem;color:var(--muted);white-space:nowrap;}
+.bt-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;margin-bottom:16px;}
+.bt-card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 14px;}
+.bt-card-lbl{font-size:0.58rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.4px;}
+.bt-card-val{font-size:1rem;font-weight:700;margin-top:4px;}
+.bt-chart-wrap{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:16px;overflow-x:auto;}
+.bt-chart-title{font-size:0.72rem;font-weight:700;color:var(--muted);margin-bottom:10px;}
+.bt-table-wrap{overflow-x:auto;}
+.bt-table{width:100%;border-collapse:collapse;font-size:0.72rem;}
+.bt-table th{background:var(--card);padding:8px 10px;text-align:left;color:var(--muted);font-size:0.62rem;text-transform:uppercase;border-bottom:2px solid var(--border);cursor:pointer;white-space:nowrap;}
+.bt-table td{padding:7px 10px;border-bottom:1px solid var(--border);}
+.bt-table tr.win-row td:first-child{border-left:2px solid var(--green);}
+.bt-table tr.loss-row td:first-child{border-left:2px solid var(--red);}
+.bt-pagination{display:flex;align-items:center;gap:8px;padding:10px 0;font-size:0.72rem;}
+.bt-page-btn{background:var(--card);border:1px solid var(--border);color:var(--text);padding:4px 12px;border-radius:6px;cursor:pointer;font-size:0.7rem;}
+.bt-page-btn:disabled{opacity:0.4;cursor:not-allowed;}
+/* ── Trade Book tab ── */
+.tb-filter-bar{background:var(--card);border-bottom:1px solid var(--border);padding:8px 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.tb-filter-lbl{font-size:0.6rem;color:var(--muted);text-transform:uppercase;font-weight:700;}
+.tb-filter-btn{padding:3px 10px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:0.68rem;cursor:pointer;transition:all .2s;white-space:nowrap;}
+.tb-filter-btn.active{background:var(--purple);color:#fff;border-color:var(--purple);}
+.tb-search{background:var(--surface);border:1px solid var(--border);color:var(--text);padding:4px 10px;border-radius:6px;font-size:0.7rem;width:130px;outline:none;}
+.tb-date-input{background:var(--surface);border:1px solid var(--border);color:var(--text);padding:3px 8px;border-radius:6px;font-size:0.68rem;outline:none;}
+.tb-summary-strip{display:flex;gap:10px;flex-wrap:wrap;padding:10px 14px;background:var(--surface);border-bottom:1px solid var(--border);}
+.tb-sum-item{display:flex;flex-direction:column;gap:2px;}
+.tb-sum-lbl{font-size:0.58rem;color:var(--muted);text-transform:uppercase;}
+.tb-sum-val{font-size:0.82rem;font-weight:700;}
+.tb-table{width:100%;border-collapse:collapse;font-size:0.72rem;}
+.tb-table th{background:var(--card);padding:7px 10px;text-align:left;color:var(--muted);font-size:0.62rem;text-transform:uppercase;border-bottom:2px solid var(--border);cursor:pointer;white-space:nowrap;}
+.tb-table td{padding:7px 10px;border-bottom:1px solid var(--border);}
+.tb-table tr.tb-win td:first-child{border-left:2px solid var(--green);}
+.tb-table tr.tb-loss td:first-child{border-left:2px solid var(--red);}
+.tb-total-row td{background:var(--card);font-weight:700;font-size:0.78rem;border-top:2px solid var(--border);}
+
 /* ── Responsive ── */
 @media(max-width:768px){
   .tab-btn{padding:8px 12px;font-size:0.72rem;}
@@ -376,6 +419,12 @@ td{padding:7px 12px;font-size:0.75rem;white-space:nowrap;}
   </button>
   <button class="tab-btn tone-orange" id="tab-btn-orders" onclick="switchTab('orders',this)">
     <span class="tab-ico">📋</span> Orders <span class="tab-badge" id="ordTabBadge">0</span>
+  </button>
+  <button class="tab-btn tone-cyan" id="tab-btn-backtest" onclick="switchTab('backtest',this)">
+    <span class="tab-ico">🔬</span> Backtest
+  </button>
+  <button class="tab-btn tone-purple" id="tab-btn-tradebook" onclick="switchTab('tradebook',this)">
+    <span class="tab-ico">📚</span> Trade Book
   </button>
 </div>
 
@@ -483,6 +532,7 @@ td{padding:7px 12px;font-size:0.75rem;white-space:nowrap;}
       <span>📅 Daily P&L Report</span>
       <div style="display:flex;gap:6px">
         <button class="btn btn-muted" style="font-size:0.65rem" onclick="clearTodayPnl()">🗑 Clear Today</button>
+        <button class="btn btn-muted" style="font-size:0.65rem" onclick="clearPnlHistory()">🗑 Clear History</button>
         <a href="/api/pnl/export" style="text-decoration:none">
           <button class="btn btn-muted" style="font-size:0.65rem">⬇ Export CSV</button>
         </a>
@@ -614,6 +664,135 @@ td{padding:7px 12px;font-size:0.75rem;white-space:nowrap;}
   </div>
 </div>
 
+<!-- ══════════════════════════════════════════════
+     Tab 7 — Backtest
+     ══════════════════════════════════════════════ -->
+<div class="tab-panel" id="tab-backtest">
+  <div class="tab-content">
+    <div class="tab-section-title"><span style="color:var(--accent)">🔬 ORB BACKTEST ENGINE</span></div>
+
+    <!-- Section A: Run Controls -->
+    <div class="bt-controls">
+      <button class="bt-run-btn" id="btRunBtn" onclick="btRun()">▶ Run Backtest</button>
+      <button class="bt-retry-btn" onclick="btRetest()">↺ Retest with Current Settings</button>
+      <div class="bt-progress" id="btProgressWrap" style="display:none">
+        <div class="bt-progress-bar"><div class="bt-progress-fill" id="btProgressFill" style="width:0%"></div></div>
+        <span class="bt-progress-text" id="btProgressText">Starting...</span>
+      </div>
+    </div>
+
+    <!-- Section B: Summary Cards -->
+    <div class="bt-cards" id="btCards" style="display:none"></div>
+
+    <!-- Section C: Daily PnL Chart -->
+    <div class="bt-chart-wrap" id="btChartWrap" style="display:none">
+      <div class="bt-chart-title">Daily Net P&L (Rs)</div>
+      <svg id="btChartSvg" style="width:100%;height:160px;display:block"></svg>
+    </div>
+
+    <!-- Section D: Trade Table -->
+    <div id="btTableWrap" style="display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <span style="font-size:0.75rem;font-weight:700;color:var(--muted)" id="btTableTitle">All Trades</span>
+        <div style="display:flex;gap:6px">
+          <select id="btDirFilter" onchange="btRenderTable()" style="font-size:0.68rem;padding:3px 6px;background:var(--card);border:1px solid var(--border);color:var(--text);border-radius:6px">
+            <option value="all">All Dir</option><option value="BUY">BUY</option><option value="SELL">SELL</option>
+          </select>
+          <select id="btResultFilter" onchange="btRenderTable()" style="font-size:0.68rem;padding:3px 6px;background:var(--card);border:1px solid var(--border);color:var(--text);border-radius:6px">
+            <option value="all">All Results</option><option value="win">Win</option><option value="loss">Loss</option>
+            <option value="SL_HIT">SL Hit</option><option value="T1_HIT">T1 Hit</option><option value="FORCE_EXIT">Force Exit</option>
+          </select>
+        </div>
+      </div>
+      <div class="bt-table-wrap">
+        <table class="bt-table">
+          <thead><tr>
+            <th onclick="btSort('date')">Date ▼</th>
+            <th onclick="btSort('symbol')">Symbol</th>
+            <th onclick="btSort('direction')">Dir</th>
+            <th onclick="btSort('entry_price')">Entry</th>
+            <th onclick="btSort('exit_price')">Exit</th>
+            <th onclick="btSort('exit_reason')">Reason</th>
+            <th onclick="btSort('quantity')">Qty</th>
+            <th onclick="btSort('net_pnl')">Net P&L</th>
+          </tr></thead>
+          <tbody id="btTbody"></tbody>
+        </table>
+      </div>
+      <div class="bt-pagination">
+        <button class="bt-page-btn" id="btPrevBtn" onclick="btPage(-1)" disabled>← Prev</button>
+        <span id="btPageInfo" style="color:var(--muted)">Page 1</span>
+        <button class="bt-page-btn" id="btNextBtn" onclick="btPage(1)">Next →</button>
+        <span style="color:var(--muted);font-size:0.65rem" id="btTotalLabel"></span>
+      </div>
+    </div>
+
+    <div id="btEmpty" class="empty-state" style="padding:48px 20px">
+      <div class="empty-state-icon">🔬</div>
+      Click "▶ Run Backtest" to analyse 3 months of Nifty 100 signals
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════
+     Tab 8 — Trade Book
+     ══════════════════════════════════════════════ -->
+<div class="tab-panel" id="tab-tradebook">
+  <!-- Filter bar -->
+  <div class="tb-filter-bar">
+    <span class="tb-filter-lbl">From</span>
+    <input type="date" class="tb-date-input" id="tbFrom" onchange="tbApplyFilters()">
+    <span class="tb-filter-lbl">To</span>
+    <input type="date" class="tb-date-input" id="tbTo" onchange="tbApplyFilters()">
+    <div class="bar-sep"></div>
+    <span class="tb-filter-lbl">Dir</span>
+    <button class="tb-filter-btn active" onclick="tbDir('all',this)">All</button>
+    <button class="tb-filter-btn" onclick="tbDir('BUY',this)">BUY</button>
+    <button class="tb-filter-btn" onclick="tbDir('SELL',this)">SELL</button>
+    <div class="bar-sep"></div>
+    <span class="tb-filter-lbl">Result</span>
+    <button class="tb-filter-btn active" onclick="tbResult('all',this)" id="tbResAll">All</button>
+    <button class="tb-filter-btn" onclick="tbResult('win',this)">Win</button>
+    <button class="tb-filter-btn" onclick="tbResult('loss',this)">Loss</button>
+    <button class="tb-filter-btn" onclick="tbResult('SL_HIT',this)">SL Hit</button>
+    <button class="tb-filter-btn" onclick="tbResult('T1_HIT',this)">T1 Hit</button>
+    <div class="bar-sep"></div>
+    <input type="text" class="tb-search" id="tbSearch" placeholder="🔍 Symbol" oninput="tbApplyFilters()">
+    <button class="btn-cyan" onclick="fetchTradeBook()">⟳</button>
+  </div>
+
+  <!-- Mini summary -->
+  <div class="tb-summary-strip" id="tbSummary">
+    <div class="tb-sum-item"><span class="tb-sum-lbl">Showing</span><span class="tb-sum-val pv-neu" id="tbSumCount">0</span></div>
+    <div class="tb-sum-item"><span class="tb-sum-lbl">Win Rate</span><span class="tb-sum-val" id="tbSumWR">--</span></div>
+    <div class="tb-sum-item"><span class="tb-sum-lbl">Net P&L</span><span class="tb-sum-val" id="tbSumPnl">Rs 0</span></div>
+    <div class="tb-sum-item"><span class="tb-sum-lbl">Wins</span><span class="tb-sum-val pv-pos" id="tbSumWins">0</span></div>
+    <div class="tb-sum-item"><span class="tb-sum-lbl">Losses</span><span class="tb-sum-val pv-neg" id="tbSumLoss">0</span></div>
+    <div class="tb-sum-item"><span class="tb-sum-lbl">Avg Win</span><span class="tb-sum-val" id="tbSumAvgW">--</span></div>
+    <div class="tb-sum-item"><span class="tb-sum-lbl">Avg Loss</span><span class="tb-sum-val" id="tbSumAvgL">--</span></div>
+  </div>
+
+  <!-- Trade table -->
+  <div style="overflow-x:auto">
+    <table class="tb-table">
+      <thead><tr>
+        <th onclick="tbSort('date')">Date</th>
+        <th onclick="tbSort('entry_time')">Time</th>
+        <th onclick="tbSort('symbol')">Symbol</th>
+        <th onclick="tbSort('direction')">Dir</th>
+        <th onclick="tbSort('entry_price')">Entry</th>
+        <th onclick="tbSort('exit_price')">Exit</th>
+        <th onclick="tbSort('qty')">Qty</th>
+        <th onclick="tbSort('gross_pnl')">Gross P&L</th>
+        <th onclick="tbSort('charges')">Charges</th>
+        <th onclick="tbSort('net_pnl')">Net P&L</th>
+        <th onclick="tbSort('reason')">Reason</th>
+      </tr></thead>
+      <tbody id="tbTbody"><tr><td colspan="11" class="empty-state" style="padding:30px">Loading trade history...</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
 <!-- ── PIN auth modal ── -->
 <div class="overlay" id="pinModal">
   <div class="modal" style="max-width:300px;text-align:center">
@@ -702,6 +881,8 @@ function switchTab(name, btn){
   if(name==='pnl')fetchPnLReport();
   if(name==='broker')fetchBrokerData();
   if(name==='orders')fetchTodayOrders();
+  if(name==='backtest')btCheckStatus();
+  if(name==='tradebook')fetchTradeBook();
 }
 
 // ── Core state ────────────────────────────────────────────────
@@ -1040,6 +1221,10 @@ async function fetchSignals(){
   }catch(e){}
 }
 
+var NSE_HOLIDAYS_2025=["2025-01-26","2025-02-26","2025-03-14","2025-03-31","2025-04-10","2025-04-14","2025-04-18","2025-05-01","2025-08-15","2025-08-27","2025-10-02","2025-10-24","2025-11-05","2025-12-25"];
+function isWeekend(dateStr){var d=new Date(dateStr+"T00:00:00");return d.getDay()===0||d.getDay()===6;}
+function isHoliday(dateStr){return NSE_HOLIDAYS_2025.indexOf(dateStr)>=0;}
+
 async function fetchPnLReport(){
   try{
     var r=await fetch(SRV+"/api/pnl/daily"),d=await r.json();
@@ -1051,9 +1236,17 @@ async function fetchPnLReport(){
         "<div class='pnl-sum-card'><div class='pnl-sum-lbl'>Win Rate</div><div class='pnl-sum-val "+(total.win_rate>=50?"pv-pos":"pv-neg")+"'>"+total.win_rate+"%</div></div>"+
         "<div class='pnl-sum-card'><div class='pnl-sum-lbl'>Best Day</div><div class='pnl-sum-val pv-pos'>"+(d.daily.length?Math.max.apply(null,d.daily.map(function(x){return x.net_pnl;})).toFixed(0):"0")+" Rs</div></div>";
       var tbody=document.getElementById("pnlTableBody");
-      tbody.innerHTML=d.daily.map(function(row){
+      // Step 5: filter out zero-trade weekends; mark holidays
+      var rows=d.daily.filter(function(row){
+        if(row.trades>0)return true;
+        if(isWeekend(row.date))return false;
+        return true; // keep zero-trade weekdays (holiday or missed day)
+      });
+      tbody.innerHTML=rows.map(function(row){
         var pc=row.net_pnl>=0?"style='color:var(--green)'":" style='color:var(--red)'";
-        return "<tr><td>"+row.date+"</td><td>"+row.trades+"</td><td style='color:var(--green)'>"+row.wins+"</td>"+
+        var note="";
+        if(row.trades===0&&isHoliday(row.date))note=" <span style='font-size:0.6rem;color:var(--gold)'>(Holiday)</span>";
+        return "<tr><td>"+row.date+note+"</td><td>"+row.trades+"</td><td style='color:var(--green)'>"+row.wins+"</td>"+
           "<td style='color:var(--red)'>"+row.losses+"</td><td>"+row.win_rate+"%</td>"+
           "<td "+(row.gross_pnl>=0?"style='color:var(--green)'":" style='color:var(--red)'")+">"+(row.gross_pnl>=0?"+":"")+row.gross_pnl+"</td>"+
           "<td style='color:var(--muted)'>-"+row.charges+"</td><td "+pc+">"+(row.net_pnl>=0?"+":"")+row.net_pnl+"</td></tr>";
@@ -1395,12 +1588,22 @@ function toggleTrial(){
   });
 }
 
-async function clearTodayPnl(){
-  if(!confirm('Clear all of today\'s paper trade data? This removes positions, P&L and trade log for today.'))return;
-  var r=await fetch(SRV+'/api/pnl/clear-today',{method:'POST'});
-  var d=await r.json();
-  if(d.success){showToast('🗑 '+d.message,'info');fetchPnl();fetchStatus();}
-  else showToast('Clear failed: '+(d.error||'unknown'),'error');
+function clearPnlHistory(){
+  requirePin('🗑 Clear P&L History','Enter PIN to erase all previous days — today\'s data is kept',async function(){
+    var r=await fetch(SRV+'/api/pnl/clear-history',{method:'POST'});
+    var d=await r.json();
+    if(d.success){showToast('🗑 '+d.message,'info');fetchPnl();}
+    else showToast('Clear failed: '+(d.error||'unknown'),'error');
+  });
+}
+
+function clearTodayPnl(){
+  requirePin('🗑 Clear Today\'s Data','Enter PIN to erase today\'s positions, P&L and trade log',async function(){
+    var r=await fetch(SRV+'/api/pnl/clear-today',{method:'POST'});
+    var d=await r.json();
+    if(d.success){showToast('🗑 '+d.message,'info');fetchPnl();fetchStatus();}
+    else showToast('Clear failed: '+(d.error||'unknown'),'error');
+  });
 }
 
 // ── Broker data ───────────────────────────────────────────────
@@ -1630,6 +1833,306 @@ document.addEventListener('keydown',function(e){
   else if(e.key==='Backspace')_pinClear();
   else if(e.key==='Escape')_pinCancel();
 });
+
+// ══════════════════════════════════════════════════════════════
+// BACKTEST TAB
+// ══════════════════════════════════════════════════════════════
+var btTrades=[],btPage=0,btPageSize=50,btSortCol="date",btSortDir="desc",btStatusInterval=null;
+
+async function btRun(){
+  var btn=document.getElementById("btRunBtn");
+  btn.disabled=true;btn.textContent="⏳ Running...";
+  document.getElementById("btProgressWrap").style.display="flex";
+  document.getElementById("btEmpty").style.display="none";
+  try{
+    var r=await fetch(SRV+"/api/backtest/run",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({months:3,stocks:100})});
+    var d=await r.json();
+    if(d.success){btPollStatus();}
+    else{showToast("Backtest error: "+d.error,"error");btn.disabled=false;btn.textContent="▶ Run Backtest";}
+  }catch(e){showToast("Error: "+e.message,"error");btn.disabled=false;btn.textContent="▶ Run Backtest";}
+}
+
+async function btRetest(){
+  var cfg=await fetch(SRV+"/api/config").then(r=>r.json());
+  // Rerun with current config — same params for now
+  btRun();
+}
+
+function btPollStatus(){
+  if(btStatusInterval)clearInterval(btStatusInterval);
+  btStatusInterval=setInterval(async function(){
+    try{
+      var r=await fetch(SRV+"/api/backtest/status"),d=await r.json();
+      if(!d.success)return;
+      document.getElementById("btProgressText").textContent=d.progress||"Running...";
+      document.getElementById("btProgressFill").style.width=(d.percent||0)+"%";
+      if(d.status==="complete"){
+        clearInterval(btStatusInterval);btStatusInterval=null;
+        document.getElementById("btRunBtn").disabled=false;
+        document.getElementById("btRunBtn").textContent="▶ Run Backtest";
+        await btLoadResults();
+      }else if(d.status==="error"){
+        clearInterval(btStatusInterval);btStatusInterval=null;
+        document.getElementById("btRunBtn").disabled=false;
+        document.getElementById("btRunBtn").textContent="▶ Run Backtest";
+        showToast("Backtest failed: "+(d.error||d.progress),"error");
+      }
+    }catch(e){}
+  },2000);
+}
+
+async function btCheckStatus(){
+  try{
+    var r=await fetch(SRV+"/api/backtest/status"),d=await r.json();
+    if(d.status==="running"){
+      document.getElementById("btProgressWrap").style.display="flex";
+      document.getElementById("btRunBtn").disabled=true;
+      document.getElementById("btRunBtn").textContent="⏳ Running...";
+      document.getElementById("btEmpty").style.display="none";
+      btPollStatus();
+    }else if(d.status==="complete"){
+      await btLoadResults();
+    }
+  }catch(e){}
+}
+
+async function btLoadResults(){
+  try{
+    var r=await fetch(SRV+"/api/backtest/results"),d=await r.json();
+    if(!d.success){showToast(d.error||"No results","error");return;}
+    btTrades=d.trades||[];
+    document.getElementById("btProgressWrap").style.display="none";
+    document.getElementById("btEmpty").style.display="none";
+    btRenderCards(d.summary);
+    btRenderChart(d.summary.daily_pnl||[]);
+    document.getElementById("btTableWrap").style.display="block";
+    btRenderTable();
+  }catch(e){showToast("Load error: "+e.message,"error");}
+}
+
+function btRenderCards(s){
+  if(!s)return;
+  var cards=[
+    {l:"Total Trades",v:s.total_trades,c:"pv-neu"},
+    {l:"Win Rate",v:s.win_rate+"%",c:s.win_rate>=50?"pv-pos":"pv-neg"},
+    {l:"Profit Factor",v:s.profit_factor,c:s.profit_factor>=1?"pv-pos":"pv-neg"},
+    {l:"Total Net P&L",v:"Rs "+(s.total_net_pnl>=0?"+":"")+s.total_net_pnl,c:s.total_net_pnl>=0?"pv-pos":"pv-neg"},
+    {l:"Avg Win",v:"Rs +"+s.avg_win,c:"pv-pos"},
+    {l:"Avg Loss",v:"Rs "+s.avg_loss,c:"pv-neg"},
+    {l:"Win/Loss Ratio",v:s.win_loss_ratio+"x",c:"pv-neu"},
+    {l:"Max Drawdown",v:"Rs "+s.max_drawdown,c:"pv-neg"},
+    {l:"Best Day",v:s.best_day+" Rs "+(s.best_day_pnl>=0?"+":"")+s.best_day_pnl,c:"pv-pos"},
+    {l:"Worst Day",v:s.worst_day+" Rs "+s.worst_day_pnl,c:"pv-neg"},
+    {l:"Sharpe Ratio",v:s.sharpe_ratio,c:s.sharpe_ratio>=1?"pv-pos":"pv-neg"},
+  ];
+  var el=document.getElementById("btCards");
+  el.style.display="grid";
+  el.innerHTML=cards.map(function(c){
+    return "<div class='bt-card'><div class='bt-card-lbl'>"+c.l+"</div><div class='bt-card-val "+c.c+"'>"+c.v+"</div></div>";
+  }).join("");
+}
+
+function btRenderChart(daily){
+  if(!daily||!daily.length)return;
+  var svg=document.getElementById("btChartSvg");
+  document.getElementById("btChartWrap").style.display="block";
+  var W=svg.clientWidth||700,H=160,PAD=30;
+  var pnls=daily.map(function(d){return d.pnl;});
+  var maxAbs=Math.max.apply(null,pnls.map(Math.abs))||1;
+  var barW=Math.max(2,Math.floor((W-PAD*2)/daily.length)-1);
+  var midY=H/2;
+  var html="";
+  for(var i=0;i<daily.length;i++){
+    var p=daily[i].pnl;
+    var barH=Math.abs(p)/maxAbs*(midY-8);
+    var x=PAD+i*(barW+1);
+    var y=p>=0?midY-barH:midY;
+    var col=p>=0?"var(--green)":"var(--red)";
+    var title=daily[i].date+" Rs "+(p>=0?"+":"")+p.toFixed(0);
+    html+="<rect x='"+x+"' y='"+y+"' width='"+barW+"' height='"+barH+"' fill='"+col+"' opacity='0.8'><title>"+title+"</title></rect>";
+  }
+  // Zero line
+  html+="<line x1='"+PAD+"' y1='"+midY+"' x2='"+(W-PAD)+"' y2='"+midY+"' stroke='var(--border)' stroke-width='1'/>";
+  svg.innerHTML=html;
+}
+
+function btSort(col){
+  if(btSortCol===col)btSortDir=btSortDir==="asc"?"desc":"asc";
+  else{btSortCol=col;btSortDir="desc";}
+  btPage=0;btRenderTable();
+}
+
+function btPage(dir){btPage+=dir;btRenderTable();}
+
+function btRenderTable(){
+  var dirF=document.getElementById("btDirFilter").value;
+  var resF=document.getElementById("btResultFilter").value;
+  var arr=btTrades.filter(function(t){
+    if(dirF!=="all"&&t.direction!==dirF)return false;
+    if(resF==="win"&&t.net_pnl<=0)return false;
+    if(resF==="loss"&&t.net_pnl>0)return false;
+    if(resF!=="all"&&resF!=="win"&&resF!=="loss"&&t.exit_reason!==resF)return false;
+    return true;
+  });
+  arr.sort(function(a,b){
+    var av=a[btSortCol],bv=b[btSortCol];
+    if(typeof av==="string")return btSortDir==="asc"?av.localeCompare(bv):bv.localeCompare(av);
+    return btSortDir==="asc"?av-bv:bv-av;
+  });
+  var total=arr.length;
+  var maxPage=Math.max(0,Math.ceil(total/btPageSize)-1);
+  if(btPage<0)btPage=0;if(btPage>maxPage)btPage=maxPage;
+  var page=arr.slice(btPage*btPageSize,(btPage+1)*btPageSize);
+  document.getElementById("btPageInfo").textContent="Page "+(btPage+1)+" of "+Math.max(1,maxPage+1);
+  document.getElementById("btTotalLabel").textContent=total+" trades";
+  document.getElementById("btPrevBtn").disabled=btPage===0;
+  document.getElementById("btNextBtn").disabled=btPage>=maxPage;
+  document.getElementById("btTableTitle").textContent="Showing "+page.length+" of "+total+" trades";
+  var tbody=document.getElementById("btTbody");
+  if(!page.length){tbody.innerHTML="<tr><td colspan='8' class='empty-state' style='padding:20px'>No trades match filter</td></tr>";return;}
+  tbody.innerHTML=page.map(function(t){
+    var win=t.net_pnl>0;var col=win?"var(--green)":"var(--red)";
+    var dirC=t.direction==="BUY"?"ord-dir-buy":"ord-dir-sell";
+    var rc=win?"win-row":"loss-row";
+    return "<tr class='"+rc+"'>"+
+      "<td style='color:var(--muted);font-size:0.65rem'>"+t.date+"</td>"+
+      "<td style='font-weight:700'>"+t.symbol+"</td>"+
+      "<td class='"+dirC+"'>"+t.direction+"</td>"+
+      "<td>Rs "+t.entry_price.toFixed(2)+"</td>"+
+      "<td>Rs "+t.exit_price.toFixed(2)+"</td>"+
+      "<td><span class='ord-badge "+(t.exit_reason==="SL_HIT"?"sl":t.exit_reason==="T1_HIT"?"t1":t.exit_reason==="T2_HIT"?"t2":t.exit_reason==="T3_HIT"?"t3":"force")+"'>"+t.exit_reason.replace("_"," ")+"</span></td>"+
+      "<td>"+t.quantity+"</td>"+
+      "<td style='color:"+col+";font-weight:700'>"+(t.net_pnl>=0?"+":"")+t.net_pnl.toFixed(2)+"</td>"+
+    "</tr>";
+  }).join("");
+}
+
+// ══════════════════════════════════════════════════════════════
+// TRADE BOOK TAB
+// ══════════════════════════════════════════════════════════════
+var tbAllTrades=[],tbSortCol="date",tbSortDir="desc",tbDirFilter="all",tbResultFilter="all";
+
+async function fetchTradeBook(){
+  try{
+    // Set default date range: last 30 days
+    var now=new Date(),to=now.toISOString().slice(0,10);
+    var from=new Date(now-30*86400000).toISOString().slice(0,10);
+    var fromEl=document.getElementById("tbFrom"),toEl=document.getElementById("tbTo");
+    if(fromEl&&!fromEl.value)fromEl.value=from;
+    if(toEl&&!toEl.value)toEl.value=to;
+
+    var r=await fetch(SRV+"/api/tradebook"),d=await r.json();
+    if(!d.success){document.getElementById("tbTbody").innerHTML="<tr><td colspan='11' class='empty-state' style='padding:20px'>"+(d.error||"Error loading trades")+"</td></tr>";return;}
+    tbAllTrades=d.trades||[];
+    tbApplyFilters();
+  }catch(e){console.log("fetchTradeBook err",e);}
+}
+
+function tbDir(v,btn){
+  tbDirFilter=v;
+  document.querySelectorAll(".tb-filter-bar .tb-filter-btn").forEach(function(b){
+    if(["All","BUY","SELL"].indexOf(b.textContent.trim())>=0)b.classList.remove("active");
+  });
+  btn.classList.add("active");
+  tbApplyFilters();
+}
+
+function tbResult(v,btn){
+  tbResultFilter=v;
+  document.querySelectorAll(".tb-filter-bar .tb-filter-btn").forEach(function(b){
+    if(["All","Win","Loss","SL Hit","T1 Hit"].indexOf(b.textContent.trim())>=0)b.classList.remove("active");
+  });
+  btn.classList.add("active");
+  tbApplyFilters();
+}
+
+function tbSort(col){
+  if(tbSortCol===col)tbSortDir=tbSortDir==="asc"?"desc":"asc";
+  else{tbSortCol=col;tbSortDir="desc";}
+  tbApplyFilters();
+}
+
+function tbApplyFilters(){
+  var from=document.getElementById("tbFrom").value;
+  var to=document.getElementById("tbTo").value;
+  var search=(document.getElementById("tbSearch").value||"").toUpperCase().trim();
+  var arr=tbAllTrades.filter(function(t){
+    var date=t.date||t.entry_time||"";
+    if(from&&date.slice(0,10)<from)return false;
+    if(to&&date.slice(0,10)>to)return false;
+    if(tbDirFilter!=="all"&&t.direction!==tbDirFilter)return false;
+    if(tbResultFilter==="win"&&(t.net_pnl||0)<=0)return false;
+    if(tbResultFilter==="loss"&&(t.net_pnl||0)>0)return false;
+    if(tbResultFilter==="SL_HIT"&&t.reason!=="SL_HIT")return false;
+    if(tbResultFilter==="T1_HIT"&&t.reason!=="T1_HIT")return false;
+    if(search&&!(t.symbol||"").toUpperCase().includes(search))return false;
+    return true;
+  });
+  arr.sort(function(a,b){
+    var av=a[tbSortCol]||0,bv=b[tbSortCol]||0;
+    if(typeof av==="string")return tbSortDir==="asc"?av.localeCompare(bv):bv.localeCompare(av);
+    return tbSortDir==="asc"?av-bv:bv-av;
+  });
+  tbRenderSummary(arr);
+  tbRenderRows(arr);
+}
+
+function tbRenderSummary(arr){
+  var wins=arr.filter(function(t){return (t.net_pnl||0)>0;});
+  var loses=arr.filter(function(t){return (t.net_pnl||0)<=0;});
+  var net=arr.reduce(function(s,t){return s+(t.net_pnl||0);},0);
+  var wr=arr.length?Math.round(wins.length/arr.length*1000)/10:0;
+  var avgW=wins.length?wins.reduce(function(s,t){return s+(t.net_pnl||0);},0)/wins.length:0;
+  var avgL=loses.length?loses.reduce(function(s,t){return s+(t.net_pnl||0);},0)/loses.length:0;
+  var nc=net>=0?"pv-pos":"pv-neg";
+  document.getElementById("tbSumCount").textContent=arr.length;
+  document.getElementById("tbSumWR").textContent=wr+"%";document.getElementById("tbSumWR").className="tb-sum-val "+(wr>=50?"pv-pos":"pv-neg");
+  document.getElementById("tbSumPnl").textContent="Rs "+(net>=0?"+":"")+net.toFixed(0);document.getElementById("tbSumPnl").className="tb-sum-val "+nc;
+  document.getElementById("tbSumWins").textContent=wins.length;
+  document.getElementById("tbSumLoss").textContent=loses.length;
+  document.getElementById("tbSumAvgW").textContent=wins.length?"Rs +"+avgW.toFixed(0):"--";
+  document.getElementById("tbSumAvgL").textContent=loses.length?"Rs "+avgL.toFixed(0):"--";
+}
+
+function tbRenderRows(arr){
+  var tbody=document.getElementById("tbTbody");
+  if(!arr.length){tbody.innerHTML="<tr><td colspan='11' class='empty-state' style='padding:20px'>No trades match filters</td></tr>";return;}
+  var totalNet=0,totalGross=0,totalCharges=0;
+  var rows=arr.map(function(t){
+    var net=t.net_pnl||0,gross=t.gross_pnl||0,chg=t.charges||0;
+    totalNet+=net;totalGross+=gross;totalCharges+=chg;
+    var win=net>0;var col=win?"var(--green)":"var(--red)";
+    var dirC=t.direction==="BUY"?"ord-dir-buy":"ord-dir-sell";
+    var rc=win?"tb-win":"tb-loss";
+    var exitPrice=t.exit_price?t.exit_price.toFixed(2):"--";
+    var time=t.entry_time?(t.entry_time.slice(11,19)||"--"):"--";
+    var reason=t.reason||"CLOSED";
+    var reasonBadge="<span class='ord-badge "+(reason==="SL_HIT"?"sl":reason.includes("T1")?"t1":reason.includes("T2")?"t2":reason.includes("T3")?"t3":reason.includes("FORCE")?"force":"manual")+"'>"+reason.replace(/_/g," ")+"</span>";
+    return "<tr class='"+rc+"'>"+
+      "<td style='color:var(--muted);font-size:0.63rem'>"+(t.date||"--")+"</td>"+
+      "<td style='color:var(--muted);font-size:0.63rem'>"+time+"</td>"+
+      "<td style='font-weight:700'>"+t.symbol+"</td>"+
+      "<td class='"+dirC+"'>"+t.direction+"</td>"+
+      "<td>Rs "+(t.entry_price||0).toFixed(2)+"</td>"+
+      "<td>Rs "+exitPrice+"</td>"+
+      "<td>"+t.qty+"</td>"+
+      "<td style='color:"+(gross>=0?"var(--green)":"var(--red)")+";'>"+(gross>=0?"+":"")+gross.toFixed(2)+"</td>"+
+      "<td style='color:var(--muted)'>-"+chg.toFixed(2)+"</td>"+
+      "<td style='color:"+col+";font-weight:700'>"+(net>=0?"+":"")+net.toFixed(2)+"</td>"+
+      "<td>"+reasonBadge+"</td>"+
+    "</tr>";
+  }).join("");
+  var nc=totalNet>=0?"var(--green)":"var(--red)";
+  var total="<tr class='tb-total-row'>"+
+    "<td colspan='6' style='text-align:right;color:var(--muted)'>TOTAL ("+arr.length+" trades)</td>"+
+    "<td></td>"+
+    "<td style='color:"+(totalGross>=0?"var(--green)":"var(--red)")+";'>"+(totalGross>=0?"+":"")+totalGross.toFixed(2)+"</td>"+
+    "<td style='color:var(--muted)'>-"+totalCharges.toFixed(2)+"</td>"+
+    "<td style='color:"+nc+";font-weight:800'>"+(totalNet>=0?"+":"")+totalNet.toFixed(2)+"</td>"+
+    "<td></td></tr>";
+  tbody.innerHTML=rows+total;
+}
 
 // ── Boot ──────────────────────────────────────────────────────
 loadSettings();updateAlertPctHeader();loadAlertsFromServer();

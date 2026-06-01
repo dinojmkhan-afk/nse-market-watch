@@ -53,13 +53,14 @@ def save_state(active):
 _state=load_state()
 strategy_active=_state.get("strategy_active",False) if isinstance(_state,dict) else False
 
-trading_config={"CAPITAL":20000,"RISK_PCT":0.005,"MAX_TRADES_DAY":3,"MAX_DAILY_LOSS_PCT":0.02,"MIS_MARGIN":4,
+trading_config={"CAPITAL":20000,"RISK_PCT":0.005,"MAX_TRADES_DAY":4,"MAX_DAILY_LOSS_PCT":0.02,"MIS_MARGIN":4,
     "OR_START_H":9,"OR_START_M":15,"OR_END_H":9,"OR_END_M":20,
     "TRADE_START_H":9,"TRADE_START_M":30,"TRADE_END_H":10,"TRADE_END_M":45,
     "FORCE_EXIT_H":14,"FORCE_EXIT_M":55,"OR_MIN_SIZE_PCT":0.3,"OR_MAX_SIZE_PCT":2.5,
     "VOLUME_MULTIPLIER":2.0,"NIFTY_GAP_LIMIT":1.5,"RVOL_MIN":1.5,"RVOL_STRONG":2.0,"MAX_POSITION_PCT":0.25,
     "T1_EXIT_PCT":0.40,"T2_EXIT_PCT":0.40,"T3_EXIT_PCT":0.20,
-    "MIN_PRICE":100,"MAX_PRICE":10000,"MIN_VOLUME":1000000,"MAX_CONSECUTIVE_LOSS":2}
+    "MIN_PRICE":100,"MAX_PRICE":10000,"MIN_VOLUME":1000000,"MAX_CONSECUTIVE_LOSS":2,
+    "SELL_RVOL_MIN":2.0,"VWAP_MEDIUM_MARGIN":0.002,"SL_DIRECTION_COOLDOWN_MINS":15}
 
 if isinstance(_state,dict) and "capital" in _state:
     trading_config["CAPITAL"]=_state["capital"]
@@ -113,7 +114,7 @@ om=OrderManager(CLIENT_ID,lambda:session_token,paper_mode=True)
 orb.on_signal=lambda s:print(f"[APP] SIGNAL: {s['symbol']} {s['direction']}")
 om.on_fill=lambda p:print(f"[APP] FILLED: {p['symbol']} {p['direction']} ({('CNC' if p.get('product')=='C' else 'MIS')})")
 om.on_exit=lambda p:(orb.record_trade_result(p.get("net_pnl",0)),print(f"[APP] CLOSED: {p['symbol']} PnL={p.get('net_pnl',0):+.2f}"))
-om.on_sl_hit=lambda s,l,p:print(f"[APP] SL HIT: {s}@{l}")
+om.on_sl_hit=lambda s,l,p:(print(f"[APP] SL HIT: {s}@{l}"),orb.record_sl_hit(p["direction"]))
 om.on_target=lambda s,t,l,p:print(f"[APP] {t} HIT: {s}@{l}")
 
 def _ist():
@@ -177,6 +178,71 @@ def fetch_nifty_from_yahoo():
         print(f"[Yahoo] Nifty fetch error: {e}")
     return False
 
+def fetch_from_flattrade():
+    """Fetch quotes from Flattrade REST API (GetQuotes) — needs session_token and token map."""
+    from concurrent.futures import ThreadPoolExecutor,as_completed
+    if not session_token:
+        print("[FT] No session token — skipping Flattrade fetch")
+        return False
+    with lock:
+        syms=[s for s in market_data if not is_index(s)]
+        # Prefer WS token map (populated after subscription); fall back to master token map
+        ws_map=dict(ws_engine.sym_to_token) if ws_engine else {}
+    tok_map=ws_map if ws_map else (_master_token_map or {})
+    if not tok_map:
+        if not load_master_from_disk():
+            print("[FT] No token map available — skipping Flattrade fetch")
+            return False
+        tok_map=_master_token_map
+    syms_with_tokens=[(s,tok_map[s]) for s in syms if s in tok_map]
+    if not syms_with_tokens:
+        print("[FT] No tokens resolved — skipping Flattrade fetch")
+        return False
+    print(f"[FT] Fetching quotes for {len(syms_with_tokens)} stocks (rate-limited)...")
+    updated=0;rate_err=0
+    # Flattrade limit: 120 req/min → stay at ~90/min = 0.67s/req
+    # Use 4 workers with 0.2s sleep between submissions ≈ 20 req/s burst then throttle
+    # Actual safe rate: submit in batches of 10, sleep 7s between batches → ~85/min
+    BATCH=10;BATCH_SLEEP=7.0
+    def fetch_one(sym,token):
+        try:
+            payload={"uid":CLIENT_ID,"exch":"NSE","token":token}
+            jdata=f"jData={json.dumps(payload)}&jKey={session_token}"
+            r=requests.post("https://piconnect.flattrade.in/PiConnectAPI/GetQuotes",
+                data=jdata,headers={"Content-Type":"application/x-www-form-urlencoded"},timeout=8)
+            if r.status_code!=200:return None
+            d=r.json()
+            if not isinstance(d,dict) or d.get("stat")!="Ok":return None
+            ltp=float(d.get("lp",0) or 0)
+            pc=float(d.get("c",0) or 0)
+            op=float(d.get("o",0) or 0)
+            hi=float(d.get("h",0) or 0)
+            lo=float(d.get("l",0) or 0)
+            vol=int(d.get("v",0) or 0)
+            ap=float(d.get("ap",0) or 0)
+            if ltp<=0:return None
+            chg=round(ltp-pc,2) if pc>0 else 0
+            chg_pct=round((ltp-pc)/pc*100,2) if pc>0 else 0
+            return sym,{"ltp":ltp,"prev_close":pc,"open":op,"high":hi,"low":lo,
+                "volume_raw":vol,"vwap":ap,"change":chg,"change_pct":chg_pct}
+        except Exception:return None
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        for i in range(0,len(syms_with_tokens),BATCH):
+            batch=syms_with_tokens[i:i+BATCH]
+            futures={ex.submit(fetch_one,s,t):(s,t) for s,t in batch}
+            for fut in as_completed(futures):
+                res=fut.result()
+                if res:
+                    sym,prices=res
+                    with lock:
+                        if sym in market_data:
+                            market_data[sym].update(prices);updated+=1
+            if i+BATCH<len(syms_with_tokens):
+                time.sleep(BATCH_SLEEP)
+    print(f"[FT] Updated {updated}/{len(syms_with_tokens)} stocks from Flattrade")
+    if updated>0:save_prices_snapshot()
+    return updated>0
+
 def fetch_prices_from_yahoo():
     """Fetch last-traded prices from Yahoo Finance v8 chart — used when NSE is unavailable."""
     from concurrent.futures import ThreadPoolExecutor,as_completed
@@ -203,7 +269,10 @@ def fetch_prices_from_yahoo():
             wk_hi=float(meta.get("fiftyTwoWeekHigh") or 0)
             wk_lo=float(meta.get("fiftyTwoWeekLow") or 0)
             rng=round((ltp-wk_lo)/(wk_hi-wk_lo)*100,1) if wk_hi>wk_lo else 0
-            return sym,{"ltp":ltp,"prev_close":prev,"change":chg,"change_pct":chg_pct,"volume_raw":vol,"value":val,"range_pct":rng}
+            # Don't include prev_close/change/change_pct — Yahoo's chartPreviousClose is
+            # adjusted for corporate actions and diverges from NSE's official prev close.
+            # WS tk/tf ticks carry the accurate "c" field from the exchange.
+            return sym,{"ltp":ltp,"volume_raw":vol,"value":val,"range_pct":rng}
         except: return None
     with ThreadPoolExecutor(max_workers=20) as ex:
         futures={ex.submit(fetch_one,s):s for s in syms}
@@ -213,7 +282,14 @@ def fetch_prices_from_yahoo():
                 sym,prices=res
                 with lock:
                     if sym in market_data:
-                        market_data[sym].update(prices);updated+=1
+                        market_data[sym].update(prices)
+                        # Recompute change/change_pct from existing prev_close after ltp update
+                        pc=market_data[sym].get("prev_close",0)
+                        ltp_now=market_data[sym].get("ltp",0)
+                        if pc>0 and ltp_now>0:
+                            market_data[sym]["change"]=round(ltp_now-pc,2)
+                            market_data[sym]["change_pct"]=round((ltp_now-pc)/pc*100,2)
+                        updated+=1
     print(f"[Yahoo] Updated {updated} stocks with last prices")
     if updated>0: save_prices_snapshot()
 
@@ -440,7 +516,12 @@ def on_tick(tick):
             # VWAP: orb.update_vwap is single source — mirror to market_data for UI
             vwap_val=orb.get_vwap(sym)
             if vwap_val>0:market_data[sym]["vwap"]=round(vwap_val,2)
-        prev=market_data[sym].get("prev_close",ltp)
+        # Always trust WS prev_close ("c" field from exchange) — overrides any Yahoo value
+        if tick.get("prev_close",0)>0:
+            market_data[sym]["prev_close"]=tick["prev_close"]
+        if tick.get("open",0)>0 and not market_data[sym].get("open"):
+            market_data[sym]["open"]=tick["open"]
+        prev=market_data[sym].get("prev_close",0) or ltp
         if prev>0:
             market_data[sym]["change"]=round(ltp-prev,2)
             market_data[sym]["change_pct"]=round((ltp-prev)/prev*100,2)
@@ -474,7 +555,7 @@ def on_candle_close(sym,candle):
                 orb.active_signals.pop(sym,None)
 
 def master_clock_loop():
-    or_finalized_today=False;daily_reset_done=False;last_date=None
+    or_finalized_today=False;daily_reset_done=False;last_date=None;ws_check_done=False
     print("[CLOCK] Master clock started")
     while True:
         try:
@@ -491,6 +572,13 @@ def master_clock_loop():
                 print("[CLOCK] Alert settings reset to defaults at 8:00 AM")
                 daily_reset_done=True;or_finalized_today=False
                 print("[CLOCK] Daily reset at 8:00 AM")
+            # D2: WS connectivity check at 9:10 AM — warn before OR window opens
+            if h==9 and m==10 and s<=30 and not ws_check_done:
+                ws_check_done=True
+                if not ws_has_live_ticks():
+                    print("[CLOCK] WARNING: WS not connected at 9:10 AM — OR window opens in 5 minutes! Login or restart WS now.")
+                else:
+                    print("[CLOCK] WS OK at 9:10 AM — ready for OR window")
             if h==9 and m==20 and s<=10 and not or_finalized_today and strategy_active:
                 if len(orb.or_data)==0:
                     with lock:snap=dict(market_data)
@@ -503,7 +591,7 @@ def master_clock_loop():
                 or_finalized_today=True
                 print("[CLOCK] OR finalized at 9:20 AM!")
             if today!=last_date:
-                last_date=today;daily_reset_done=False;or_finalized_today=False
+                last_date=today;daily_reset_done=False;or_finalized_today=False;ws_check_done=False
         except Exception as e:
             print(f"[CLOCK] Error: {e}")
         time.sleep(1)  # Always runs — even after exception
@@ -831,10 +919,22 @@ def api_logout():
 @app.route("/api/strategy/start",methods=["POST"])
 def start_strategy():
     global strategy_active
+    now=_ist();mins=now.hour*60+now.minute
+    or_start=9*60+15;or_end=9*60+20
+    # A1: Block reset during OR window — restart wipes partial OR data
+    if or_start<=mins<or_end:
+        built=sum(1 for v in orb.or_data.values() if v.get("built"))
+        partial=sum(1 for v in orb.or_data.values() if not v.get("built") and v.get("high",0)>0)
+        print(f"[APP] WARNING: Start blocked during OR window — {built} built, {partial} partial OR ranges preserved")
+        return jsonify({"success":False,
+            "error":f"OR window active (9:15–9:20). Restart now wipes OR data for {built} stocks. Wait until 9:20.",
+            "or_built":built,"or_partial":partial})
+    # D1: Warn if starting during pre-OR window
+    if 9*60<=mins<or_start:
+        print(f"[APP] WARNING: Strategy started at {now.strftime('%H:%M')} — OR window opens soon at 9:15")
     strategy_active=True
     if orb.trades_today==0 and orb.daily_pnl==0:orb.reset_daily()
     save_state(True)
-    now=_ist();mins=now.hour*60+now.minute
     if mins>9*60+20:
         built=0
         with lock:
@@ -854,6 +954,11 @@ def start_strategy():
 @app.route("/api/strategy/stop",methods=["POST"])
 def stop_strategy():
     global strategy_active
+    now=_ist();mins=now.hour*60+now.minute
+    # D1: Warn if stopped during critical pre-market window
+    if 9*60<=mins<9*60+20:
+        built=sum(1 for v in orb.or_data.values() if v.get("built"))
+        print(f"[APP] WARNING: Strategy stopped at {now.strftime('%H:%M')} — {built} OR ranges will be inactive until restart")
     strategy_active=False;save_state(False)
     return jsonify({"success":True})
 
@@ -1054,6 +1159,17 @@ def clear_today_pnl():
     print(f"[PNL] Today's paper data cleared ({len(paper_syms)} positions, trades reset)")
     return jsonify({"success":True,"message":f"Today's data cleared ({len(paper_syms)} positions removed)"})
 
+@app.route("/api/pnl/clear-history",methods=["POST"])
+def clear_pnl_history():
+    today=om._today()
+    with om.lock:
+        prev_days=[d for d in list(om.daily_pnl.keys()) if d!=today]
+        for d in prev_days:del om.daily_pnl[d]
+        om.trade_log=[t for t in om.trade_log if t.get("date")==today]
+    om._save_history()
+    print(f"[PNL] Cleared history for {len(prev_days)} previous days")
+    return jsonify({"success":True,"message":f"Cleared {len(prev_days)} previous day(s) of history"})
+
 @app.route("/api/pnl/export")
 def export_pnl():
     report=om.get_daily_report()
@@ -1062,6 +1178,118 @@ def export_pnl():
     total=om.get_total_pnl()
     csv+=f"TOTAL,{total['total_trades']},{total['total_wins']},{total['total_losses']},{total['win_rate']}%,{total['total_gross']},{total['total_charges']},{total['total_net']}\n"
     return csv,200,{"Content-Type":"text/csv","Content-Disposition":"attachment; filename=pnl_report.csv"}
+
+import subprocess as _subprocess
+import csv as _csv
+_backtest_proc=None
+
+@app.route("/api/backtest/run",methods=["POST"])
+def backtest_run():
+    global _backtest_proc
+    if _backtest_proc and _backtest_proc.poll() is None:
+        return jsonify({"success":False,"error":"Backtest already running"})
+    data=request.json or {}
+    months=int(data.get("months",3));stocks=int(data.get("stocks",100))
+    # Write idle status before spawn
+    status_file=os.path.join(os.path.dirname(__file__),".backtest_status.json")
+    try:
+        with open(status_file,"w") as f:
+            json.dump({"status":"running","progress":"Starting...","phase":"init","percent":0,"error":None,"updated":datetime.datetime.now().isoformat()},f)
+    except Exception:pass
+    _backtest_proc=_subprocess.Popen(
+        ["python3",os.path.join(os.path.dirname(__file__),"backtest.py"),
+         "--months",str(months),"--stocks",str(stocks)],
+        stdout=_subprocess.DEVNULL,stderr=_subprocess.DEVNULL)
+    return jsonify({"success":True,"job_id":str(_backtest_proc.pid),"message":f"Backtest started (months={months} stocks={stocks})"})
+
+@app.route("/api/backtest/status")
+def backtest_status():
+    status_file=os.path.join(os.path.dirname(__file__),".backtest_status.json")
+    try:
+        if os.path.exists(status_file):
+            with open(status_file) as f:d=json.load(f)
+            if _backtest_proc and _backtest_proc.poll() is not None and d.get("status")=="running":
+                d["status"]="error";d["progress"]="Process ended unexpectedly"
+            return jsonify({"success":True,**d})
+    except Exception as e:
+        return jsonify({"success":True,"status":"idle","progress":"No backtest run yet","percent":0})
+    return jsonify({"success":True,"status":"idle","progress":"No backtest run yet","percent":0})
+
+@app.route("/api/backtest/results")
+def backtest_results():
+    results_file=os.path.join(os.path.dirname(__file__),"backtest_results.csv")
+    if not os.path.exists(results_file):
+        return jsonify({"success":False,"error":"No results file — run backtest first"})
+    try:
+        trades=[]
+        with open(results_file) as f:
+            for row in _csv.DictReader(f):
+                trades.append({
+                    "date":row["date"],"symbol":row["symbol"],"direction":row["direction"],
+                    "entry_price":float(row["entry_price"]),"exit_price":float(row["exit_price"]),
+                    "exit_reason":row["exit_reason"],"quantity":int(row["quantity"]),
+                    "gross_pnl":float(row["gross_pnl"]),"charges":float(row["charges"]),
+                    "net_pnl":float(row["net_pnl"]),"or_high":float(row["or_high"]),
+                    "or_low":float(row["or_low"]),"or_size_pct":float(row["or_size_pct"]),
+                    "rvol":float(row["rvol"]),"signal_strength":row["signal_strength"],
+                    "t1_hit":row["t1_hit"]=="True","t2_hit":row["t2_hit"]=="True","t3_hit":row["t3_hit"]=="True",
+                })
+        # Build summary
+        wins=[t for t in trades if t["net_pnl"]>0]
+        loses=[t for t in trades if t["net_pnl"]<=0]
+        total_net=round(sum(t["net_pnl"] for t in trades),2)
+        from collections import defaultdict;import math
+        daily=defaultdict(float)
+        for t in trades:daily[t["date"]]+=t["net_pnl"]
+        daily_vals=sorted(daily.items())
+        equity=peak=max_dd=0.0
+        for _,pnl in daily_vals:
+            equity+=pnl
+            if equity>peak:peak=equity
+            dd=peak-equity
+            if dd>max_dd:max_dd=dd
+        daily_pnls=[v for _,v in daily_vals]
+        sharpe=0.0
+        if len(daily_pnls)>1:
+            mean=sum(daily_pnls)/len(daily_pnls)
+            std=math.sqrt(sum((x-mean)**2 for x in daily_pnls)/(len(daily_pnls)-1))
+            sharpe=round(mean/std*math.sqrt(252),2) if std>0 else 0
+        avg_win=round(sum(t["net_pnl"] for t in wins)/len(wins),2) if wins else 0
+        avg_loss=round(sum(t["net_pnl"] for t in loses)/len(loses),2) if loses else 0
+        gross_wins=abs(sum(t["net_pnl"] for t in wins))
+        gross_losses=abs(sum(t["net_pnl"] for t in loses))
+        pf=round(gross_wins/gross_losses,2) if gross_losses>0 else 999
+        best_day=max(daily.items(),key=lambda x:x[1]) if daily else ("--",0)
+        worst_day=min(daily.items(),key=lambda x:x[1]) if daily else ("--",0)
+        summary={"total_trades":len(trades),"wins":len(wins),"losses":len(loses),
+            "win_rate":round(len(wins)/len(trades)*100,1) if trades else 0,
+            "profit_factor":pf,"total_net_pnl":total_net,"avg_win":avg_win,"avg_loss":avg_loss,
+            "win_loss_ratio":round(abs(avg_win/avg_loss),2) if avg_loss else 999,
+            "max_drawdown":round(max_dd,2),"sharpe_ratio":sharpe,
+            "best_day":best_day[0],"best_day_pnl":round(best_day[1],2),
+            "worst_day":worst_day[0],"worst_day_pnl":round(worst_day[1],2),
+            "daily_pnl":[{"date":d,"pnl":round(p,2)} for d,p in daily_vals]}
+        return jsonify({"success":True,"trades":trades,"summary":summary})
+    except Exception as e:
+        return jsonify({"success":False,"error":str(e)})
+
+@app.route("/api/tradebook")
+def tradebook():
+    try:
+        history_file="/home/ubuntu/market-watch/.trade_history.json"
+        if not os.path.exists(history_file):
+            return jsonify({"success":True,"trades":[],"message":"No trade history yet"})
+        with open(history_file) as f:data=json.load(f)
+        cutoff=(datetime.datetime.now()-datetime.timedelta(days=30)).strftime("%Y-%m-%d")
+        all_trades=[]
+        for date_str,day in data.get("daily_pnl",{}).items():
+            if date_str<cutoff:continue
+            for t in day.get("trade_log",[]):
+                all_trades.append(t)
+        all_trades.sort(key=lambda x:(x.get("date",""),x.get("entry_time","")),reverse=True)
+        return jsonify({"success":True,"trades":all_trades,"count":len(all_trades)})
+    except Exception as e:
+        return jsonify({"success":False,"error":str(e)})
 
 def _flattrade_get(path,extra={}):
     """Generic Flattrade REST call. Returns parsed JSON or raises."""
@@ -1149,6 +1377,14 @@ def broker_positions():
 def ws_status():
     if ws_engine:return jsonify({"success":True,**ws_engine.status})
     return jsonify({"success":True,"connected":False,"subscribed":0})
+
+@app.route("/api/market-data/refresh",methods=["POST"])
+def refresh_market_data():
+    """Trigger a Flattrade GetQuotes fetch for all stocks (runs in background, ~5-7 min)."""
+    if not session_token:return jsonify({"success":False,"error":"Not logged in"})
+    threading.Thread(target=fetch_from_flattrade,daemon=True).start()
+    with lock:n=len([s for s in market_data if not is_index(s)])
+    return jsonify({"success":True,"message":f"Flattrade fetch started for {n} stocks (rate-limited, ~5-7 min)"})
 
 @app.route("/api/ws/restart",methods=["POST"])
 def restart_ws():
@@ -1256,8 +1492,11 @@ if __name__=="__main__":
                     ranked=sum(1 for s in list(market_data)[:500] if snap_values.get(s,0)>0)
                     print(f"[Startup] Seeded {count} symbols from master file ({ranked} ranked by last-known value)")
         restore_prices_snapshot()
-        # Run Yahoo fetch if volume or range data is missing — covers fresh starts and snapshot gaps
-        if not any(d.get("volume_raw",0)>0 for d in market_data.values()) or not any(d.get("range_pct",0)>0 for d in market_data.values()):
+        # Run Yahoo fetch if volume/range missing OR prev_close missing (prev_close excluded from snapshot)
+        with lock: _vals=list(market_data.values())
+        if (not any(d.get("volume_raw",0)>0 for d in _vals) or
+                not any(d.get("range_pct",0)>0 for d in _vals) or
+                not any(d.get("prev_close",0)>0 for d in _vals)):
             threading.Thread(target=fetch_prices_from_yahoo,daemon=True).start()
         # Auto-reconnect WS if we restored a token from today
         if session_token and not ws_engine:

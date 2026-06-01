@@ -231,8 +231,18 @@ class FlattradeWebSocket:
                     self.volume_initialized[sym]=True
                 # Interval vol = within current 5-min candle only
                 interval_vol=max(0,cum_vol-self.candle_start_volume.get(sym,cum_vol))
+            tick_out={"symbol":sym,"ltp":ltp,"volume":interval_vol,"time":ts}
+            # Capture prev close and OHLD from subscription ACK (tk) and tick (tf) messages
+            pc=float(data.get("c",0) or 0)
+            if pc>0:tick_out["prev_close"]=pc
+            op=float(data.get("o",0) or 0)
+            if op>0:tick_out["open"]=op
+            hi=float(data.get("h",0) or 0)
+            if hi>0:tick_out["high"]=hi
+            lo=float(data.get("l",0) or 0)
+            if lo>0:tick_out["low"]=lo
             if self.on_tick:
-                self.on_tick({"symbol":sym,"ltp":ltp,"volume":interval_vol,"time":ts})
+                self.on_tick(tick_out)
             if self.on_vwap_update and interval_vol>0:
                 self.on_vwap_update(sym,ltp,interval_vol)
             self._candle(sym,ltp,cum_vol,ts)

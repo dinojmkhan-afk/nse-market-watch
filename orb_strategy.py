@@ -1,12 +1,13 @@
 import datetime,threading
 from collections import defaultdict
-CONFIG={"CAPITAL":20000,"RISK_PCT":0.005,"MAX_TRADES_DAY":3,"MAX_DAILY_LOSS_PCT":0.02,"MIS_MARGIN":4,
+CONFIG={"CAPITAL":20000,"RISK_PCT":0.005,"MAX_TRADES_DAY":4,"MAX_DAILY_LOSS_PCT":0.02,"MIS_MARGIN":4,
     "OR_START_H":9,"OR_START_M":15,"OR_END_H":9,"OR_END_M":20,
     "TRADE_START_H":9,"TRADE_START_M":30,"TRADE_END_H":10,"TRADE_END_M":45,
     "FORCE_EXIT_H":14,"FORCE_EXIT_M":55,
     "OR_MIN_SIZE_PCT":0.3,"OR_MAX_SIZE_PCT":2.5,"VOLUME_MULTIPLIER":2.0,"NIFTY_GAP_LIMIT":1.5,"RVOL_MIN":1.5,"RVOL_STRONG":2.0,"MAX_POSITION_PCT":0.25,
     "T1_EXIT_PCT":0.40,"T2_EXIT_PCT":0.40,"T3_EXIT_PCT":0.20,
-    "MIN_PRICE":100,"MAX_PRICE":10000,"MIN_VOLUME":1000000,"MAX_CONSECUTIVE_LOSS":2}
+    "MIN_PRICE":100,"MAX_PRICE":10000,"MIN_VOLUME":1000000,"MAX_CONSECUTIVE_LOSS":2,
+    "SELL_RVOL_MIN":2.0,"VWAP_MEDIUM_MARGIN":0.002,"SL_DIRECTION_COOLDOWN_MINS":15}
 class ORBStrategy:
     def __init__(self,config=None):
         self.config=config or CONFIG;self.lock=threading.Lock()
@@ -22,6 +23,8 @@ class ORBStrategy:
         # Fix 2: Nifty staleness tracking
         self.nifty_change=0
         self.last_nifty_update=None
+        self.last_signal_candle={}  # B3: {direction: candle_bucket} same-candle duplicate guard
+        self.sl_hit_direction_time={}  # C2: {direction: timestamp} per-direction SL cooldown
     def _ist(self):
         return datetime.datetime.now(datetime.timezone.utc).astimezone(datetime.timezone(datetime.timedelta(hours=5,minutes=30)))
     def _mins(self,dt):return dt.hour*60+dt.minute
@@ -148,6 +151,7 @@ class ORBStrategy:
         # RVOL = Current volume / rolling 20-candle average
         history=self.volume_history.get(sym,[])
         rvol_min=self.config["RVOL_MIN"]
+        bypass_active=False
         if len(history)>=2:
             # WS mode: accurate 5-min candle volumes available
             baseline=sum(history)/len(history)
@@ -157,6 +161,7 @@ class ORBStrategy:
                 return None
         else:
             # WS candle history < 2 — bypass RVOL filter using OR candle baseline
+            bypass_active=True
             baseline=self.avg_volumes.get(sym,0)
             rvol=rvol_min  # Default to minimum to pass filter
             if baseline<=0:return None  # No volume data — skip
@@ -174,14 +179,41 @@ class ORBStrategy:
         if vwap==0 and past_945 and not self.trial_mode:
             print(f"[ORB] {sym} VWAP unavailable after 9:45 skipping")
             return None
-        vwap_ok_buy=vwap==0 or ltp>vwap
-        vwap_ok_sell=vwap==0 or ltp<vwap
+        # B4: 0.2% VWAP clearance required for MEDIUM signals (STRONG keeps loose check)
+        vwap_margin=self.config.get("VWAP_MEDIUM_MARGIN",0.002) if signal_strength=="MEDIUM" and not self.trial_mode else 0.0
+        vwap_ok_buy=vwap==0 or ltp>vwap*(1+vwap_margin)
+        vwap_ok_sell=vwap==0 or ltp<vwap*(1-vwap_margin)
         if vwap>0:print(f"[ORB] {sym} LTP={ltp} VWAP={vwap} RVOL={rvol:.2f} [{signal_strength}]")
-        signal=None
-        if candle["close"]>o["high"] and ng and vwap_ok_buy:signal=self._sig(sym,"BUY",ltp,o,rvol,signal_strength,baseline)
-        elif candle["close"]<o["low"] and nr and vwap_ok_sell:signal=self._sig(sym,"SELL",ltp,o,rvol,signal_strength,baseline)
+        # Determine intended direction
+        if candle["close"]>o["high"] and ng and vwap_ok_buy:intended="BUY"
+        elif candle["close"]<o["low"] and nr and vwap_ok_sell:intended="SELL"
+        else:return None
+        # B2: Block SELL on RVOL bypass — insufficient volume history for SHORT
+        if intended=="SELL" and bypass_active and not self.trial_mode:
+            print(f"[ORB] {sym} SELL blocked — RVOL bypass active (need ≥2 candles for SHORT)")
+            return None
+        # B1: SELL requires STRONG RVOL (≥2.0) — shorts snap back fast on medium volume
+        if intended=="SELL" and rvol<self.config.get("SELL_RVOL_MIN",self.config["RVOL_STRONG"]) and not self.trial_mode:
+            print(f"[ORB] {sym} SELL skipped RVOL={rvol:.2f} < {self.config.get('SELL_RVOL_MIN',self.config['RVOL_STRONG']):.1f} (STRONG required for SHORT)")
+            return None
+        # B3: Block second same-direction signal within the same 5-min candle
+        candle_bucket=candle.get("time",0)
+        if candle_bucket>0 and not self.trial_mode and self.last_signal_candle.get(intended)==candle_bucket:
+            print(f"[ORB] {sym} {intended} blocked — same-candle duplicate signal already fired this candle")
+            return None
+        # C2: Per-direction SL cooldown
+        if not self.trial_mode:
+            cooldown_mins=self.config.get("SL_DIRECTION_COOLDOWN_MINS",15)
+            last_sl=self.sl_hit_direction_time.get(intended)
+            if last_sl:
+                mins_since=(self._ist()-last_sl).total_seconds()/60
+                if mins_since<cooldown_mins:
+                    print(f"[ORB] {sym} {intended} blocked — SL cooldown {mins_since:.0f}/{cooldown_mins}min after {intended} SL hit")
+                    return None
+        signal=self._sig(sym,intended,ltp,o,rvol,signal_strength,baseline)
         if signal:
             with self.lock:self.active_signals[sym]=signal
+            if candle_bucket>0:self.last_signal_candle[intended]=candle_bucket
             print(f"[ORB] SIGNAL {sym} {signal['direction']} @ {ltp}")
             if self.on_signal:self.on_signal(signal)
         return signal
@@ -243,6 +275,11 @@ class ORBStrategy:
         self.daily_pnl+=pnl;self.trades_today+=1
         if pnl<0:self.losses_today+=1;self.consecutive_loss+=1
         else:self.consecutive_loss=0
+    def record_sl_hit(self,direction):
+        """C2: Arm per-direction cooldown after an SL hit."""
+        self.sl_hit_direction_time[direction]=self._ist()
+        cooldown=self.config.get("SL_DIRECTION_COOLDOWN_MINS",15)
+        print(f"[ORB] SL cooldown armed: {direction} signals blocked for {cooldown}min")
     def reset_daily(self):
         self.trades_today=0;self.losses_today=0;self.consecutive_loss=0
         self.daily_pnl=0;self.trading_stopped=False;self.stop_reason=""
@@ -251,6 +288,8 @@ class ORBStrategy:
         self.vwap_data={}
         self.nifty_change=0
         self.last_nifty_update=None
+        self.last_signal_candle={}
+        self.sl_hit_direction_time={}
         print("[ORB] Daily reset")
     @property
     def status(self):
