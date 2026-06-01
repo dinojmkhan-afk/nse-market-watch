@@ -2,7 +2,7 @@
 """
 NSE ORB Backtest Engine
 Replays ORBStrategy on historical 5-min OHLCV data.
-Usage: python3 backtest.py [--months 3] [--stocks 100] [--source zerodha|yfinance]
+Usage: python3 backtest.py [--months 3] [--stocks 100] [--source shoonya|yfinance]
 """
 import argparse, os, sys, json, csv, datetime, time
 from collections import defaultdict
@@ -15,8 +15,7 @@ try:
 except ImportError:
     print("ERROR: pip install yfinance"); sys.exit(1)
 
-ZERODHA_CFG = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".zerodha_config.json")
-KITE_INSTRUMENTS_CACHE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".kite_instruments.csv")
+SHOONYA_CFG = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".shoonya_config.json")
 
 RESULTS_FILE  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backtest_results.csv")
 STATUS_FILE   = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".backtest_status.json")
@@ -121,58 +120,45 @@ def download_5min(sym_ns, start, end, verbose=False):
     return combined
 
 
-# ── Zerodha / Kite data source ────────────────────────────────────────────────
-def load_zerodha_creds():
-    """Returns (api_key, access_token) if configured and fresh, else (None, None)."""
+# ── Shoonya / NorenAPI data source ───────────────────────────────────────────
+def load_shoonya_session():
+    """Returns (uid, session_token) if logged in today, else (None, None)."""
     try:
-        if not os.path.exists(ZERODHA_CFG): return None, None
-        d = json.load(open(ZERODHA_CFG))
+        if not os.path.exists(SHOONYA_CFG): return None, None
+        d = json.load(open(SHOONYA_CFG))
         today = datetime.date.today().strftime("%Y-%m-%d")
-        if d.get("api_key") and d.get("access_token") and d.get("token_date") == today:
-            return d["api_key"], d["access_token"]
+        if d.get("uid") and d.get("session_token") and d.get("token_date") == today:
+            return d["uid"], d["session_token"]
     except Exception:
         pass
     return None, None
 
 
-def load_kite_instruments(api_key, access_token):
-    """Download and cache NSE instruments from Kite. Returns {tradingsymbol: instrument_token}."""
-    import requests as _req
-    # Refresh cache if older than 1 day
-    if os.path.exists(KITE_INSTRUMENTS_CACHE):
-        age = time.time() - os.path.getmtime(KITE_INSTRUMENTS_CACHE)
-        if age < 86400:
-            token_map = {}
-            with open(KITE_INSTRUMENTS_CACHE) as f:
-                for row in csv.DictReader(f):
-                    if row.get("exchange") == "NSE" and row.get("instrument_type") == "EQ":
-                        token_map[row["tradingsymbol"]] = int(row["instrument_token"])
-            if token_map:
-                print(f"[Kite] Loaded {len(token_map)} NSE EQ tokens from cache")
-                return token_map
-    print("[Kite] Downloading instruments list...")
-    r = _req.get("https://api.kite.trade/instruments/NSE",
-                 headers={"X-Kite-Version": "3",
-                          "Authorization": f"token {api_key}:{access_token}"},
-                 timeout=30)
-    if r.status_code != 200:
-        print(f"[Kite] Instruments download failed: {r.status_code} {r.text[:100]}")
+def load_shoonya_instruments():
+    """
+    Build {tradingsymbol: token_str} from the NSE master file already on disk.
+    No download needed — the master file is refreshed at 8 AM by app.py.
+    """
+    master = os.path.join(os.path.dirname(os.path.abspath(__file__)), "NSE_symbols.txt")
+    if not os.path.exists(master):
+        print("[Shoonya] NSE_symbols.txt not found — run the app first to download it")
         return {}
-    with open(KITE_INSTRUMENTS_CACHE, "w") as f:
-        f.write(r.text)
     token_map = {}
-    for row in csv.DictReader(r.text.splitlines()):
-        if row.get("exchange") == "NSE" and row.get("instrument_type") == "EQ":
-            token_map[row["tradingsymbol"]] = int(row["instrument_token"])
-    print(f"[Kite] {len(token_map)} NSE EQ tokens downloaded")
+    with open(master) as f:
+        reader = csv.reader(f)
+        next(reader)  # skip header
+        for row in reader:
+            if len(row) >= 6 and row[0] == "NSE" and row[5].strip() == "EQ":
+                sym = row[4].replace("-EQ", "").strip()
+                token_map[sym] = row[1]  # numeric token as string
+    print(f"[Shoonya] {len(token_map)} NSE EQ tokens loaded from master file")
     return token_map
 
 
-def download_5min_kite(instrument_token, start, end, api_key, access_token, verbose=False):
+def download_5min_shoonya(sym, token_str, uid, session_token, start, end, verbose=False):
     """
-    Download 5-min OHLCV from Kite API.
-    Kite allows up to 100 days per request for 5-minute interval.
-    Returns a DataFrame with IST-aware DatetimeIndex, or None on failure.
+    Download 5-min OHLCV from Shoonya TPSeries API using epoch timestamps.
+    Requests in 90-day chunks. Returns a DataFrame with IST index, or None.
     """
     import requests as _req
     CHUNK_DAYS = 90
@@ -180,38 +166,43 @@ def download_5min_kite(instrument_token, start, end, api_key, access_token, verb
     cs = start
     while cs <= end:
         ce = min(cs + datetime.timedelta(days=CHUNK_DAYS), end)
-        url = (f"https://api.kite.trade/instruments/historical"
-               f"/{instrument_token}/5minute"
-               f"?from={cs.strftime('%Y-%m-%d')}+09:00:00"
-               f"&to={ce.strftime('%Y-%m-%d')}+15:30:00")
+        # Build epoch range: 9:15 AM → 3:30 PM IST
+        from_epoch = int(datetime.datetime.combine(cs,  datetime.time(9, 15), tzinfo=IST).timestamp())
+        to_epoch   = int(datetime.datetime.combine(ce, datetime.time(15, 30), tzinfo=IST).timestamp())
+        payload = {"uid": uid, "actid": uid, "exch": "NSE",
+                   "tsym": f"{sym}-EQ", "token": token_str,
+                   "st": str(from_epoch), "et": str(to_epoch), "intrv": "5"}
+        jdata = "jData=" + json.dumps(payload) + "&jKey=" + session_token
         try:
-            r = _req.get(url,
-                headers={"X-Kite-Version": "3",
-                         "Authorization": f"token {api_key}:{access_token}"},
-                timeout=20)
-            data = r.json()
-            if data.get("status") == "success":
-                candles = data["data"]["candles"]
-                if candles:
-                    rows = []
-                    for c in candles:
-                        # c = [timestamp, open, high, low, close, volume, oi]
-                        rows.append({
-                            "Open": float(c[1]), "High": float(c[2]),
-                            "Low":  float(c[3]), "Close": float(c[4]),
-                            "Volume": int(c[5])
-                        })
-                    import pandas as _pd
-                    ts_index = _pd.to_datetime([c[0] for c in candles], utc=True)
-                    df = _pd.DataFrame(rows, index=ts_index)
-                    df.index = df.index.tz_convert("Asia/Kolkata")
+            r = _req.post("https://api.shoonya.com/NorenWClientTP/TPSeries",
+                          data=jdata,
+                          headers={"Content-Type": "application/x-www-form-urlencoded"},
+                          timeout=20)
+            resp = r.json()
+            # Success: response is a list of candle dicts
+            if isinstance(resp, list) and resp:
+                rows, idx = [], []
+                for c in resp:
+                    try:
+                        ts = datetime.datetime.fromtimestamp(int(c["ssboe"]), tz=IST)
+                        rows.append({"Open": float(c["into"]), "High": float(c["inth"]),
+                                     "Low": float(c["intl"]), "Close": float(c["intc"]),
+                                     "Volume": int(c.get("v", 0))})
+                        idx.append(ts)
+                    except Exception:
+                        pass
+                if rows:
+                    df = pd.DataFrame(rows, index=pd.DatetimeIndex(idx))
                     dfs.append(df)
-            elif verbose:
-                print(f"  [Kite] {instrument_token} chunk {cs}: {data.get('message','?')}")
+            elif isinstance(resp, dict) and resp.get("stat") == "Not_Ok":
+                emsg = resp.get("emsg", "")
+                # Error 5 = no data for this range (normal for non-trading days)
+                if "\"5\"" not in emsg and verbose:
+                    print(f"  [Shoonya] {sym} {cs}→{ce}: {emsg}")
         except Exception as e:
-            if verbose: print(f"  [Kite] {instrument_token} error: {e}")
+            if verbose: print(f"  [Shoonya] {sym} error: {e}")
         cs = ce + datetime.timedelta(days=1)
-        time.sleep(0.35)   # stay well under 3 req/sec rate limit
+        time.sleep(0.35)  # ~3 req/sec — well within Shoonya rate limits
 
     if not dfs: return None
     combined = pd.concat(dfs)
@@ -548,8 +539,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--months", type=int, default=2)
     ap.add_argument("--stocks", type=int, default=100)
-    ap.add_argument("--source", choices=["auto","zerodha","yfinance"], default="auto",
-                    help="Data source: auto (prefer Zerodha), zerodha, or yfinance")
+    ap.add_argument("--source", choices=["auto","shoonya","yfinance"], default="auto",
+                    help="Data source: auto (prefer Shoonya), shoonya, or yfinance")
     args = ap.parse_args()
 
     set_status("running", "Starting backtest...", "init", 0)
@@ -557,19 +548,19 @@ def main():
     end_date = datetime.date.today()
 
     # ── Choose data source ────────────────────────────────────────────────
-    kite_api_key, kite_token = load_zerodha_creds()
-    use_zerodha = False
-    if args.source == "zerodha":
-        if not kite_token:
-            print("[Backtest] ERROR: Zerodha not logged in for today. Login via the Backtest tab first.")
-            set_status("error", "Zerodha not logged in — use the Backtest tab to login first", "error", 0)
+    sh_uid, sh_token = load_shoonya_session()
+    use_shoonya = False
+    if args.source == "shoonya":
+        if not sh_token:
+            print("[Backtest] ERROR: Shoonya not logged in for today. Login via the Backtest tab first.")
+            set_status("error", "Shoonya not logged in — use the Backtest tab to login first", "error", 0)
             sys.exit(1)
-        use_zerodha = True
+        use_shoonya = True
     elif args.source == "auto":
-        use_zerodha = bool(kite_token)
+        use_shoonya = bool(sh_token)
 
-    if use_zerodha:
-        print(f"[Backtest] Data source: Zerodha Kite (up to 400 days of 5-min history)")
+    if use_shoonya:
+        print(f"[Backtest] Data source: Shoonya NorenAPI (up to 400 days of 5-min history)")
         max_days = 400
     else:
         print(f"[Backtest] Data source: yfinance (60-day limit for 5-min)")
@@ -590,17 +581,17 @@ def main():
     nifty_changes = fetch_nifty_daily(start_date, end_date)
 
     # ── Download 5-min data for all symbols ──────────────────────────────
-    src_label = "Zerodha" if use_zerodha else "yfinance"
+    src_label = "Shoonya" if use_shoonya else "yfinance"
     print(f"[Backtest] Downloading 5-min data for {len(symbols)} symbols via {src_label}...")
 
-    # Load Kite instrument tokens if using Zerodha
-    kite_token_map = {}
-    if use_zerodha:
-        set_status("running", "Loading Kite instruments...", "download", 4)
-        kite_token_map = load_kite_instruments(kite_api_key, kite_token)
-        if not kite_token_map:
-            print("[Backtest] ERROR: Could not load Kite instruments. Falling back to yfinance.")
-            use_zerodha = False
+    # Load Shoonya token map from existing master file (no download needed)
+    shoonya_token_map = {}
+    if use_shoonya:
+        set_status("running", "Loading NSE token map from master file...", "download", 4)
+        shoonya_token_map = load_shoonya_instruments()
+        if not shoonya_token_map:
+            print("[Backtest] ERROR: Could not load NSE tokens. Falling back to yfinance.")
+            use_shoonya = False
 
     sym_data = {}   # sym -> DataFrame
     failed   = []
@@ -608,12 +599,12 @@ def main():
         pct = int(5 + (i / len(symbols)) * 55)
         set_status("running", f"[{src_label}] Downloading {sym}... ({i+1}/{len(symbols)})", "download", pct)
         df = None
-        if use_zerodha:
-            inst_token = kite_token_map.get(sym)
-            if inst_token:
-                df = download_5min_kite(inst_token, start_date, end_date, kite_api_key, kite_token)
+        if use_shoonya:
+            tok = shoonya_token_map.get(sym)
+            if tok:
+                df = download_5min_shoonya(sym, tok, sh_uid, sh_token, start_date, end_date)
             else:
-                print(f"  [Kite] {sym} not in instrument map — skipping")
+                print(f"  [Shoonya] {sym} not in token map — skipping")
                 failed.append(sym)
                 continue
         else:

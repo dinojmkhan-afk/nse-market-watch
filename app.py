@@ -1185,73 +1185,74 @@ import subprocess as _subprocess
 import csv as _csv
 import hashlib as _hashlib
 _backtest_proc=None
-_ZERODHA_CFG=os.path.join(os.path.dirname(__file__),".zerodha_config.json")
+_SHOONYA_CFG=os.path.join(os.path.dirname(__file__),".shoonya_config.json")
 
-def _zload():
+def _shload():
     try:
-        if os.path.exists(_ZERODHA_CFG):
-            with open(_ZERODHA_CFG) as f: return json.load(f)
+        if os.path.exists(_SHOONYA_CFG):
+            with open(_SHOONYA_CFG) as f: return json.load(f)
     except Exception: pass
-    return {"api_key":"","api_secret":"","access_token":"","token_date":""}
+    return {"uid":"","pwd_hash":"","totp_secret":"","vc":"","api_secret":"","session_token":"","token_date":""}
 
-def _zsave(d):
-    with open(_ZERODHA_CFG,"w") as f: json.dump(d,f)
+def _shsave(d):
+    with open(_SHOONYA_CFG,"w") as f: json.dump(d,f)
 
-@app.route("/api/zerodha/config",methods=["GET","POST"])
-def zerodha_config():
+@app.route("/api/shoonya/config",methods=["GET","POST"])
+def shoonya_config():
     if request.method=="GET":
-        d=_zload();today=datetime.datetime.now().strftime("%Y-%m-%d")
-        return jsonify({"success":True,"api_key":d.get("api_key",""),
-            "has_secret":bool(d.get("api_secret","")),
-            "logged_in":bool(d.get("access_token","")) and d.get("token_date","")==today,
+        d=_shload();today=datetime.datetime.now().strftime("%Y-%m-%d")
+        return jsonify({"success":True,"uid":d.get("uid",""),
+            "configured":bool(d.get("uid") and d.get("pwd_hash")),
+            "logged_in":bool(d.get("session_token")) and d.get("token_date","")==today,
             "token_date":d.get("token_date","")})
     data=request.json or {}
-    d=_zload()
-    if "api_key" in data: d["api_key"]=data["api_key"].strip()
-    if "api_secret" in data: d["api_secret"]=data["api_secret"].strip()
-    _zsave(d)
-    return jsonify({"success":True,"message":"Zerodha credentials saved"})
+    d=_shload()
+    for k in ("uid","vc","api_secret","totp_secret"):
+        if k in data: d[k]=data[k].strip()
+    if "pwd" in data and data["pwd"].strip():
+        d["pwd_hash"]=_hashlib.sha256(data["pwd"].strip().encode()).hexdigest()
+    _shsave(d)
+    return jsonify({"success":True,"message":"Shoonya credentials saved"})
 
-@app.route("/api/zerodha/login-url")
-def zerodha_login_url():
-    d=_zload()
-    if not d.get("api_key"): return jsonify({"success":False,"error":"API key not configured"})
-    url=f"https://kite.trade/connect/login?api_key={d['api_key']}&v=3"
-    return jsonify({"success":True,"url":url})
-
-@app.route("/zerodha")
-def zerodha_callback():
-    """Kite redirects here after login with ?request_token=xxx&status=success"""
-    req_token=request.args.get("request_token","")
-    status=request.args.get("status","")
-    if status!="success" or not req_token:
-        return "<h3>Zerodha login failed — status: "+status+"</h3><p>Close this tab and try again.</p>"
-    d=_zload()
+@app.route("/api/shoonya/login",methods=["POST"])
+def shoonya_login():
+    import requests as _req
+    d=_shload()
+    if not d.get("uid") or not d.get("pwd_hash"):
+        return jsonify({"success":False,"error":"Credentials not configured"})
+    data=request.json or {}
+    # Accept manual TOTP code from UI, or auto-generate from stored secret
+    totp_code=data.get("totp","").strip()
+    if not totp_code and d.get("totp_secret"):
+        try:
+            import pyotp
+            totp_code=pyotp.TOTP(d["totp_secret"]).now()
+        except Exception as e:
+            return jsonify({"success":False,"error":f"TOTP generation failed: {e}"})
+    if not totp_code:
+        return jsonify({"success":False,"error":"TOTP code required"})
+    app_key=_hashlib.sha256(f"{d['uid']}|{d['api_secret']}".encode()).hexdigest()
+    payload={"apkversion":"1.0.0","uid":d["uid"],"pwd":d["pwd_hash"],
+             "factor2":totp_code,"vc":d["vc"],"appkey":app_key,"imei":"api"}
+    jdata="jData="+json.dumps(payload)
     try:
-        import hashlib
-        checksum=hashlib.sha256((d["api_key"]+req_token+d["api_secret"]).encode()).hexdigest()
-        import requests as _req
-        r=_req.post("https://api.kite.trade/session/token",
-            data={"api_key":d["api_key"],"request_token":req_token,"checksum":checksum},
-            headers={"X-Kite-Version":"3"},timeout=10)
+        r=_req.post("https://api.shoonya.com/NorenWClientTP/QuickAuth",
+            data=jdata,headers={"Content-Type":"application/x-www-form-urlencoded"},timeout=10)
         resp=r.json()
-        if resp.get("status")=="success":
-            d["access_token"]=resp["data"]["access_token"]
+        if resp.get("stat")=="Ok":
+            d["session_token"]=resp["susertoken"]
             d["token_date"]=datetime.datetime.now().strftime("%Y-%m-%d")
-            _zsave(d)
-            return """<html><body style='background:#07090f;color:#e6edf3;font-family:sans-serif;padding:40px;text-align:center'>
-                <h2 style='color:#3fb950'>✅ Zerodha Login Successful</h2>
-                <p>Access token saved for today. You can close this tab.</p>
-                <script>setTimeout(()=>window.close(),2000)</script></body></html>"""
+            _shsave(d)
+            return jsonify({"success":True,"message":"Shoonya login successful"})
         else:
-            return f"<h3>Token exchange failed: {resp}</h3>"
+            return jsonify({"success":False,"error":resp.get("emsg","Login failed")})
     except Exception as e:
-        return f"<h3>Error: {e}</h3>"
+        return jsonify({"success":False,"error":str(e)})
 
-@app.route("/api/zerodha/logout",methods=["POST"])
-def zerodha_logout():
-    d=_zload();d["access_token"]="";d["token_date"]=""
-    _zsave(d);return jsonify({"success":True})
+@app.route("/api/shoonya/logout",methods=["POST"])
+def shoonya_logout():
+    d=_shload();d["session_token"]="";d["token_date"]=""
+    _shsave(d);return jsonify({"success":True})
 
 @app.route("/api/backtest/run",methods=["POST"])
 def backtest_run():
@@ -1260,7 +1261,7 @@ def backtest_run():
         return jsonify({"success":False,"error":"Backtest already running"})
     data=request.json or {}
     months=int(data.get("months",2));stocks=int(data.get("stocks",100))
-    source=data.get("source","auto")
+    source=data.get("source","auto")  # auto|shoonya|yfinance
     # Write idle status before spawn
     status_file=os.path.join(os.path.dirname(__file__),".backtest_status.json")
     try:
