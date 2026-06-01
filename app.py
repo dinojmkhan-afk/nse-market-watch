@@ -1183,7 +1183,75 @@ def export_pnl():
 
 import subprocess as _subprocess
 import csv as _csv
+import hashlib as _hashlib
 _backtest_proc=None
+_ZERODHA_CFG=os.path.join(os.path.dirname(__file__),".zerodha_config.json")
+
+def _zload():
+    try:
+        if os.path.exists(_ZERODHA_CFG):
+            with open(_ZERODHA_CFG) as f: return json.load(f)
+    except Exception: pass
+    return {"api_key":"","api_secret":"","access_token":"","token_date":""}
+
+def _zsave(d):
+    with open(_ZERODHA_CFG,"w") as f: json.dump(d,f)
+
+@app.route("/api/zerodha/config",methods=["GET","POST"])
+def zerodha_config():
+    if request.method=="GET":
+        d=_zload();today=datetime.datetime.now().strftime("%Y-%m-%d")
+        return jsonify({"success":True,"api_key":d.get("api_key",""),
+            "has_secret":bool(d.get("api_secret","")),
+            "logged_in":bool(d.get("access_token","")) and d.get("token_date","")==today,
+            "token_date":d.get("token_date","")})
+    data=request.json or {}
+    d=_zload()
+    if "api_key" in data: d["api_key"]=data["api_key"].strip()
+    if "api_secret" in data: d["api_secret"]=data["api_secret"].strip()
+    _zsave(d)
+    return jsonify({"success":True,"message":"Zerodha credentials saved"})
+
+@app.route("/api/zerodha/login-url")
+def zerodha_login_url():
+    d=_zload()
+    if not d.get("api_key"): return jsonify({"success":False,"error":"API key not configured"})
+    url=f"https://kite.trade/connect/login?api_key={d['api_key']}&v=3"
+    return jsonify({"success":True,"url":url})
+
+@app.route("/zerodha")
+def zerodha_callback():
+    """Kite redirects here after login with ?request_token=xxx&status=success"""
+    req_token=request.args.get("request_token","")
+    status=request.args.get("status","")
+    if status!="success" or not req_token:
+        return "<h3>Zerodha login failed — status: "+status+"</h3><p>Close this tab and try again.</p>"
+    d=_zload()
+    try:
+        import hashlib
+        checksum=hashlib.sha256((d["api_key"]+req_token+d["api_secret"]).encode()).hexdigest()
+        import requests as _req
+        r=_req.post("https://api.kite.trade/session/token",
+            data={"api_key":d["api_key"],"request_token":req_token,"checksum":checksum},
+            headers={"X-Kite-Version":"3"},timeout=10)
+        resp=r.json()
+        if resp.get("status")=="success":
+            d["access_token"]=resp["data"]["access_token"]
+            d["token_date"]=datetime.datetime.now().strftime("%Y-%m-%d")
+            _zsave(d)
+            return """<html><body style='background:#07090f;color:#e6edf3;font-family:sans-serif;padding:40px;text-align:center'>
+                <h2 style='color:#3fb950'>✅ Zerodha Login Successful</h2>
+                <p>Access token saved for today. You can close this tab.</p>
+                <script>setTimeout(()=>window.close(),2000)</script></body></html>"""
+        else:
+            return f"<h3>Token exchange failed: {resp}</h3>"
+    except Exception as e:
+        return f"<h3>Error: {e}</h3>"
+
+@app.route("/api/zerodha/logout",methods=["POST"])
+def zerodha_logout():
+    d=_zload();d["access_token"]="";d["token_date"]=""
+    _zsave(d);return jsonify({"success":True})
 
 @app.route("/api/backtest/run",methods=["POST"])
 def backtest_run():
@@ -1191,7 +1259,8 @@ def backtest_run():
     if _backtest_proc and _backtest_proc.poll() is None:
         return jsonify({"success":False,"error":"Backtest already running"})
     data=request.json or {}
-    months=int(data.get("months",3));stocks=int(data.get("stocks",100))
+    months=int(data.get("months",2));stocks=int(data.get("stocks",100))
+    source=data.get("source","auto")
     # Write idle status before spawn
     status_file=os.path.join(os.path.dirname(__file__),".backtest_status.json")
     try:
@@ -1200,9 +1269,9 @@ def backtest_run():
     except Exception:pass
     _backtest_proc=_subprocess.Popen(
         ["python3",os.path.join(os.path.dirname(__file__),"backtest.py"),
-         "--months",str(months),"--stocks",str(stocks)],
+         "--months",str(months),"--stocks",str(stocks),"--source",source],
         stdout=_subprocess.DEVNULL,stderr=_subprocess.DEVNULL)
-    return jsonify({"success":True,"job_id":str(_backtest_proc.pid),"message":f"Backtest started (months={months} stocks={stocks})"})
+    return jsonify({"success":True,"job_id":str(_backtest_proc.pid),"message":f"Backtest started (months={months} stocks={stocks} source={source})"})
 
 @app.route("/api/backtest/status")
 def backtest_status():

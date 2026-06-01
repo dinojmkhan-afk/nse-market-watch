@@ -672,9 +672,45 @@ td{padding:7px 12px;font-size:0.75rem;white-space:nowrap;}
     <div class="tab-section-title"><span style="color:var(--accent)">🔬 ORB BACKTEST ENGINE</span></div>
 
     <!-- Section A: Run Controls -->
+    <!-- Zerodha config panel -->
+    <div id="zdPanel" style="width:100%;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:10px;display:none">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:0.72rem;font-weight:700;color:var(--purple)">🔑 Zerodha Kite</span>
+          <span id="zdStatus" style="font-size:0.65rem;padding:2px 8px;border-radius:10px;background:rgba(139,148,158,0.15);color:var(--muted)">Not configured</span>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <input type="text" id="zdKey" placeholder="API Key" style="width:130px;font-size:0.68rem;padding:3px 8px;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:6px;outline:none">
+          <input type="password" id="zdSecret" placeholder="API Secret" style="width:130px;font-size:0.68rem;padding:3px 8px;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:6px;outline:none">
+          <button onclick="zdSaveCreds()" style="padding:3px 10px;border-radius:6px;border:1px solid var(--purple);background:rgba(163,113,247,0.15);color:var(--purple);font-size:0.68rem;font-weight:700;cursor:pointer">Save</button>
+          <button id="zdLoginBtn" onclick="zdLogin()" style="padding:3px 10px;border-radius:6px;border:none;background:var(--purple);color:#fff;font-size:0.68rem;font-weight:700;cursor:pointer;display:none">🔐 Login</button>
+          <button id="zdLogoutBtn" onclick="zdLogout()" style="padding:3px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:0.65rem;cursor:pointer;display:none">Logout</button>
+        </div>
+      </div>
+      <div style="font-size:0.6rem;color:var(--muted);margin-top:6px">
+        Set redirect URL to <code style="color:var(--accent)">http://43.205.180.54:5000/zerodha</code> in your Kite Connect app at console.zerodha.com
+      </div>
+    </div>
+
     <div class="bt-controls">
+      <div style="display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:5px 10px;">
+        <span style="font-size:0.65rem;color:var(--muted);white-space:nowrap">Months</span>
+        <input type="number" id="btMonths" value="2" min="1" max="12"
+          style="width:44px;background:transparent;border:none;color:var(--accent);font-size:0.85rem;font-weight:700;text-align:center;outline:none;"
+          oninput="btMonthsClamp(this)">
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:5px 10px;">
+        <span style="font-size:0.65rem;color:var(--muted)">Source</span>
+        <select id="btSource" style="background:transparent;border:none;color:var(--accent);font-size:0.75rem;font-weight:700;outline:none;cursor:pointer">
+          <option value="auto">Auto</option>
+          <option value="zerodha">Zerodha</option>
+          <option value="yfinance">yfinance</option>
+        </select>
+      </div>
       <button class="bt-run-btn" id="btRunBtn" onclick="btRun()">▶ Run Backtest</button>
       <button class="bt-retry-btn" onclick="btRetest()">↺ Retest with Current Settings</button>
+      <button onclick="document.getElementById('zdPanel').style.display=document.getElementById('zdPanel').style.display==='none'?'block':'none';zdCheckStatus()"
+        style="padding:5px 10px;border-radius:8px;border:1px solid rgba(163,113,247,0.4);background:rgba(163,113,247,0.1);color:var(--purple);font-size:0.68rem;font-weight:700;cursor:pointer">🔑 Zerodha</button>
       <div class="bt-progress" id="btProgressWrap" style="display:none">
         <div class="bt-progress-bar"><div class="bt-progress-fill" id="btProgressFill" style="width:0%"></div></div>
         <span class="bt-progress-text" id="btProgressText">Starting...</span>
@@ -729,7 +765,7 @@ td{padding:7px 12px;font-size:0.75rem;white-space:nowrap;}
 
     <div id="btEmpty" class="empty-state" style="padding:48px 20px">
       <div class="empty-state-icon">🔬</div>
-      Click "▶ Run Backtest" to analyse 3 months of Nifty 100 signals
+      Set months above, then click "▶ Run Backtest" to analyse Nifty 100 signals
     </div>
   </div>
 </div>
@@ -1838,6 +1874,73 @@ document.addEventListener('keydown',function(e){
 // BACKTEST TAB
 // ══════════════════════════════════════════════════════════════
 var btTrades=[],btPage=0,btPageSize=50,btSortCol="date",btSortDir="desc",btStatusInterval=null;
+function btMonthsClamp(el){
+  var v=parseInt(el.value)||1;
+  if(v<1)el.value=1;
+  // If source is yfinance or auto without zerodha, cap at 2
+  var src=document.getElementById('btSource').value;
+  var zdLoggedIn=document.getElementById('zdLogoutBtn').style.display!=='none';
+  if((src==='yfinance'||(src==='auto'&&!zdLoggedIn))&&v>2)el.value=2;
+}
+
+// ── Zerodha config helpers ─────────────────────────────────────────────────
+async function zdCheckStatus(){
+  try{
+    var r=await fetch(SRV+'/api/zerodha/config'),d=await r.json();
+    if(!d.success)return;
+    var s=document.getElementById('zdStatus');
+    var lb=document.getElementById('zdLoginBtn');
+    var lo=document.getElementById('zdLogoutBtn');
+    if(d.api_key)document.getElementById('zdKey').value=d.api_key;
+    if(d.logged_in){
+      s.textContent='✅ Logged in ('+d.token_date+')';
+      s.style.background='rgba(63,185,80,0.15)';s.style.color='var(--green)';
+      lb.style.display='none';lo.style.display='inline';
+      document.getElementById('btSource').value='zerodha';
+      // Unlock months beyond 2
+      document.getElementById('btMonths').max=12;
+      document.getElementById('btMonths').value=Math.max(parseInt(document.getElementById('btMonths').value)||2,3);
+    } else if(d.api_key){
+      s.textContent='⚠️ Need login';s.style.background='rgba(210,153,34,0.15)';s.style.color='var(--gold)';
+      lb.style.display='inline';lo.style.display='none';
+    } else {
+      s.textContent='Not configured';s.style.background='rgba(139,148,158,0.15)';s.style.color='var(--muted)';
+      lb.style.display='none';lo.style.display='none';
+    }
+  }catch(e){}
+}
+
+async function zdSaveCreds(){
+  var key=document.getElementById('zdKey').value.trim();
+  var sec=document.getElementById('zdSecret').value.trim();
+  if(!key){showToast('Enter API Key','error');return;}
+  var r=await fetch(SRV+'/api/zerodha/config',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({api_key:key,api_secret:sec})});
+  var d=await r.json();
+  if(d.success){showToast('Zerodha credentials saved','info');zdCheckStatus();}
+  else showToast('Save failed: '+d.error,'error');
+}
+
+async function zdLogin(){
+  var r=await fetch(SRV+'/api/zerodha/login-url'),d=await r.json();
+  if(d.success){
+    window.open(d.url,'_blank','width=500,height=650');
+    // Poll for login completion
+    var poll=setInterval(async function(){
+      var s=await fetch(SRV+'/api/zerodha/config').then(r=>r.json());
+      if(s.logged_in){clearInterval(poll);zdCheckStatus();showToast('✅ Zerodha logged in','info');}
+    },3000);
+    setTimeout(()=>clearInterval(poll),120000); // stop polling after 2 min
+  } else showToast('Error: '+d.error,'error');
+}
+
+async function zdLogout(){
+  await fetch(SRV+'/api/zerodha/logout',{method:'POST'});
+  showToast('Zerodha logged out','info');
+  document.getElementById('btMonths').max=2;
+  if(parseInt(document.getElementById('btMonths').value)>2)document.getElementById('btMonths').value=2;
+  zdCheckStatus();
+}
 
 async function btRun(){
   var btn=document.getElementById("btRunBtn");
@@ -1846,7 +1949,8 @@ async function btRun(){
   document.getElementById("btEmpty").style.display="none";
   try{
     var r=await fetch(SRV+"/api/backtest/run",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({months:3,stocks:100})});
+      body:JSON.stringify({months:parseInt(document.getElementById('btMonths').value)||2,stocks:100,
+        source:document.getElementById('btSource').value})});
     var d=await r.json();
     if(d.success){btPollStatus();}
     else{showToast("Backtest error: "+d.error,"error");btn.disabled=false;btn.textContent="▶ Run Backtest";}
