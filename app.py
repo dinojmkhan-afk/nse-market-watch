@@ -773,7 +773,7 @@ def fetch_nse_loop():
         time.sleep(5)
 
 def exchange_code(code):
-    global session_token,ws_engine
+    global session_token,ws_engine,strategy_active
     try:
         h=hashlib.sha256(f"{API_KEY}{code}{API_SECRET}".encode()).hexdigest()
         r=requests.post(FLATTRADE_AUTH_URL,json={"api_key":API_KEY,"request_code":code,"api_secret":h},timeout=10)
@@ -782,10 +782,43 @@ def exchange_code(code):
         if data.get("token"):
             session_token=data["token"]
             print(f"[Auth] SUCCESS! Token: {session_token}",flush=True)
-            save_state(strategy_active)  # persist token to disk immediately
+            # Stop any existing engine before creating new one — prevents orphan ticks/duplicate orders
+            if ws_engine:
+                try: ws_engine.stop()
+                except: pass
+                time.sleep(0.5)
             ws_engine=FlattradeWebSocket(session_token,CLIENT_ID,on_tick,on_candle_close,on_vwap_update=orb.update_vwap)
             ws_engine.start()
             threading.Thread(target=start_ws_subscription,daemon=True).start()
+            # Auto-start strategy on market-hours login so trading never silently misses the session
+            ist_now=_ist()
+            if ist_now.weekday()<5:
+                mins_now=ist_now.hour*60+ist_now.minute
+                if 8*60<=mins_now<=15*60+30:
+                    strategy_active=True
+                    if orb.trades_today==0 and orb.daily_pnl==0:orb.reset_daily()
+                    if orb.trading_stopped:orb.trading_stopped=False;orb.stop_reason=""
+                    save_state(True)
+                    print(f"[Auth] Strategy AUTO-STARTED at {ist_now.strftime('%H:%M')}",flush=True)
+                    # Late OR build if logged in after OR window closed
+                    if mins_now>9*60+20:
+                        built=0
+                        with lock:
+                            for sym,d in market_data.items():
+                                if is_index(sym):continue
+                                op=d.get("open",0);ltp=d.get("ltp",0)
+                                if op>0 and ltp>0:
+                                    hi=d.get("high",op);lo=d.get("low",op)
+                                    or_hi=round(max(hi,op*1.002),2);or_lo=round(min(lo,op*0.998),2)
+                                    or_sz=round(or_hi-or_lo,2);or_pct=round((or_sz/or_lo)*100,2)
+                                    orb.or_data[sym]={"high":or_hi,"low":or_lo,"size":or_sz,
+                                        "size_pct":or_pct,"volume":d.get("volume_raw",0),"built":True}
+                                    built+=1
+                        if built>0:print(f"[ORB] Late OR built on login: {built} stocks",flush=True)
+                else:
+                    save_state(strategy_active)  # persist token outside market hours
+            else:
+                save_state(strategy_active)  # persist token on weekends
             return True
         print(f"[Auth] Failed: {data}",flush=True);return False
     except Exception as e:
@@ -936,6 +969,10 @@ def start_strategy():
         print(f"[APP] WARNING: Strategy started at {now.strftime('%H:%M')} — OR window opens soon at 9:15")
     strategy_active=True
     if orb.trades_today==0 and orb.daily_pnl==0:orb.reset_daily()
+    # Clear trading_stopped so signals fire after manual restart (user is consciously overriding)
+    if orb.trading_stopped:
+        print(f"[APP] trading_stopped cleared on manual restart (was: {orb.stop_reason})")
+        orb.trading_stopped=False;orb.stop_reason=""
     save_state(True)
     if mins>9*60+20:
         built=0
@@ -1032,7 +1069,7 @@ def get_config():
 
 @app.route("/api/config",methods=["POST"])
 def set_config():
-    data=request.json
+    data=request.json or {}
     if "capital" in data:
         cap=int(data["capital"])
         if not(1000<=cap<=10000000):return jsonify({"success":False,"error":"Capital must be Rs 1,000 to Rs 1 Crore"})
@@ -1088,7 +1125,7 @@ def exit_all():om.exit_all("MANUAL");return jsonify({"success":True})
 @app.route("/api/test/trigger-sl",methods=["POST"])
 def trigger_sl():
     """Push LTP past SL for a position to verify paper SL exit fires."""
-    sym=request.json.get("symbol","")
+    sym=(request.json or {}).get("symbol","")
     if sym not in om.positions:
         return jsonify({"success":False,"error":f"{sym} not in positions"})
     pos=om.positions[sym]
@@ -1260,7 +1297,11 @@ def backtest_run():
     if _backtest_proc and _backtest_proc.poll() is None:
         return jsonify({"success":False,"error":"Backtest already running"})
     data=request.json or {}
-    months=int(data.get("months",2));stocks=int(data.get("stocks",100))
+    try:
+        months=max(1,min(24,int(data.get("months",2))))
+        stocks=max(10,min(500,int(data.get("stocks",100))))
+    except(ValueError,TypeError):
+        return jsonify({"success":False,"error":"months and stocks must be integers"})
     source=data.get("source","auto")  # auto|shoonya|yfinance
     # Write idle status before spawn
     status_file=os.path.join(os.path.dirname(__file__),".backtest_status.json")
