@@ -43,7 +43,7 @@ class FlattradeWebSocket:
     def _market_hours(self):
         ist=datetime.datetime.now(datetime.timezone.utc).astimezone(datetime.timezone(datetime.timedelta(hours=5,minutes=30)))
         m=ist.hour*60+ist.minute
-        return 9*60+10<=m<=15*60+35
+        return 9*60+0<=m<=15*60+35
 
     def start(self):
         if self._thread and self._thread.is_alive():

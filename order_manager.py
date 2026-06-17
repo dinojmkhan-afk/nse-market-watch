@@ -74,11 +74,14 @@ class OrderManager:
         if result["success"]:
             fp=result.get("fill_price",price)
             qt1=int(qty*0.40);qt2=int(qty*0.40);qt3=qty-qt1-qt2
+            entry_charges=self._charges(qty,fp,direction)
             pos={"symbol":sym,"direction":direction,"qty":qty,"qty_t1":qt1,"qty_t2":qt2,"qty_t3":qt3,
                 "qty_remaining":qty,"entry_price":fp,"sl_price":sl,"target1":t1,"target2":t2,"target3":t3,
+                "sl_price_entry":sl,"target1_entry":t1,"target2_entry":t2,"target3_entry":t3,
                 "t1_done":False,"t2_done":False,"t3_done":False,"status":"OPEN","paper_mode":self.paper_mode,
                 "entry_time":self._ist().isoformat(),"order_id":result.get("order_id","PAPER"),"last_ltp":fp,
-                "charges":self._charges(qty,fp,direction),"product":result.get("product","I")}
+                "charges":entry_charges,"realized_gross":0.0,"realized_charges":entry_charges,
+                "product":result.get("product","I")}
             with self.lock:self.positions[sym]=pos
             self._ensure_today()
             self.recent_orders[sym]=time.time()  # Record for cooldown
@@ -167,6 +170,7 @@ class OrderManager:
             return{"success":False,"error":"Network error — check connection!","rejected":False}
         except Exception as e:return{"success":False,"error":str(e)}
     def exit_position(self,sym,qty,price,reason="MANUAL"):
+        if qty<=0:return{"success":False,"error":"Zero qty"}
         if sym not in self.positions:return{"success":False,"error":"No position"}
         pos=self.positions[sym];exit_dir="SELL" if pos["direction"]=="BUY" else "BUY"
         if self.paper_mode:
@@ -198,49 +202,71 @@ class OrderManager:
         fp=result.get("fill_price",price)
         pnl=(fp-pos["entry_price"])*qty if pos["direction"]=="BUY" else (pos["entry_price"]-fp)*qty
         charges=self._charges(qty,fp,exit_dir)
-        net=pnl-charges
+        leg_net=pnl-charges
+        # Accumulate P&L across all exit legs (T1/T2/T3 partial exits + final SL/close)
+        pos["realized_gross"]=pos.get("realized_gross",0)+pnl
+        pos["realized_charges"]=pos.get("realized_charges",0)+charges
         pos["qty_remaining"]-=qty
         if pos["qty_remaining"]<=0:
+            total_gross=pos["realized_gross"]
+            total_charges=pos["realized_charges"]
+            total_net=total_gross-total_charges
             pos.update({"status":"CLOSED","exit_price":fp,"exit_time":self._ist().isoformat(),
-                "gross_pnl":round(pnl,2),"charges":round(charges,2),"net_pnl":round(net,2),"reason":reason})
+                "gross_pnl":round(total_gross,2),"charges":round(total_charges,2),"net_pnl":round(total_net,2),"reason":reason})
             self._record(pos)
             with self.lock:del self.positions[sym]
             if self.on_exit:self.on_exit(pos)
-        print(f"[OM] EXIT: {sym} {qty}@{fp} PnL:{pnl:+.2f} Net:{net:+.2f} [{reason}]")
+        print(f"[OM] EXIT: {sym} {qty}@{fp} PnL:{pnl:+.2f} Net:{leg_net:+.2f} [{reason}]")
         return result
     def exit_all(self,reason="FORCE_EXIT"):
         for sym in list(self.positions.keys()):
             pos=self.positions.get(sym)
             if pos:self.exit_position(sym,pos["qty_remaining"],pos.get("last_ltp",pos["entry_price"]),reason)
     def update_ltp(self,sym,ltp):
+        # All flag mutations happen inside the lock to prevent WS + NSE threads from double-firing
+        # the same target exit. Actions are collected then executed after lock release.
+        pending=[]
         with self.lock:
             if sym not in self.positions:return
             pos=self.positions[sym];pos["last_ltp"]=ltp
             if pos["status"]!="OPEN":return
-        if pos["direction"]=="BUY":self._chk_buy(sym,pos,ltp)
-        else:self._chk_sell(sym,pos,ltp)
-    def _chk_buy(self,sym,pos,ltp):
-        if ltp<=pos["sl_price"]:self.exit_position(sym,pos["qty_remaining"],ltp,"SL_HIT");(self.on_sl_hit and self.on_sl_hit(sym,ltp,pos));return
-        if not pos["t1_done"] and ltp>=pos["target1"]:
-            self.exit_position(sym,pos["qty_t1"],ltp,"T1_HIT");pos["t1_done"]=True;pos["sl_price"]=pos["entry_price"]
-            self.on_target and self.on_target(sym,"T1",ltp,pos)
-        if pos["t1_done"] and not pos["t2_done"] and ltp>=pos["target2"]:
-            self.exit_position(sym,pos["qty_t2"],ltp,"T2_HIT");pos["t2_done"]=True;pos["sl_price"]=pos["target1"]
-            self.on_target and self.on_target(sym,"T2",ltp,pos)
-        if pos["t2_done"] and not pos["t3_done"] and ltp>=pos["target3"]:
-            self.exit_position(sym,pos["qty_remaining"],ltp,"T3_HIT");pos["t3_done"]=True
-            self.on_target and self.on_target(sym,"T3",ltp,pos)
-    def _chk_sell(self,sym,pos,ltp):
-        if ltp>=pos["sl_price"]:self.exit_position(sym,pos["qty_remaining"],ltp,"SL_HIT");(self.on_sl_hit and self.on_sl_hit(sym,ltp,pos));return
-        if not pos["t1_done"] and ltp<=pos["target1"]:
-            self.exit_position(sym,pos["qty_t1"],ltp,"T1_HIT");pos["t1_done"]=True;pos["sl_price"]=pos["entry_price"]
-            self.on_target and self.on_target(sym,"T1",ltp,pos)
-        if pos["t1_done"] and not pos["t2_done"] and ltp<=pos["target2"]:
-            self.exit_position(sym,pos["qty_t2"],ltp,"T2_HIT");pos["t2_done"]=True;pos["sl_price"]=pos["target1"]
-            self.on_target and self.on_target(sym,"T2",ltp,pos)
-        if pos["t2_done"] and not pos["t3_done"] and ltp<=pos["target3"]:
-            self.exit_position(sym,pos["qty_remaining"],ltp,"T3_HIT");pos["t3_done"]=True
-            self.on_target and self.on_target(sym,"T3",ltp,pos)
+            sl=pos.get("sl_price") or 0
+            t1=pos.get("target1") or 0
+            t2=pos.get("target2") or 0
+            t3=pos.get("target3") or 0
+            ep=pos["entry_price"]
+            if pos["direction"]=="BUY":
+                if sl and ltp<=sl:
+                    pending.append(("SL_HIT",pos["qty_remaining"],sl))
+                else:
+                    if not pos["t1_done"] and t1 and ltp>=t1:
+                        pos["t1_done"]=True;pos["sl_price"]=ep
+                        if pos["qty_t1"]>0:pending.append(("T1_HIT",pos["qty_t1"],ltp))
+                    if pos["t1_done"] and not pos["t2_done"] and t2 and ltp>=t2:
+                        pos["t2_done"]=True;pos["sl_price"]=t1 if t1 else ep
+                        if pos["qty_t2"]>0:pending.append(("T2_HIT",pos["qty_t2"],ltp))
+                    if pos["t2_done"] and not pos["t3_done"] and t3 and ltp>=t3:
+                        pos["t3_done"]=True
+                        t3q=pos.get("qty_t3",pos["qty_remaining"])
+                        if t3q>0:pending.append(("T3_HIT",t3q,ltp))
+            else:
+                if sl and ltp>=sl:
+                    pending.append(("SL_HIT",pos["qty_remaining"],sl))
+                else:
+                    if not pos["t1_done"] and t1 and ltp<=t1:
+                        pos["t1_done"]=True;pos["sl_price"]=ep
+                        if pos["qty_t1"]>0:pending.append(("T1_HIT",pos["qty_t1"],ltp))
+                    if pos["t1_done"] and not pos["t2_done"] and t2 and ltp<=t2:
+                        pos["t2_done"]=True;pos["sl_price"]=t1 if t1 else ep
+                        if pos["qty_t2"]>0:pending.append(("T2_HIT",pos["qty_t2"],ltp))
+                    if pos["t2_done"] and not pos["t3_done"] and t3 and ltp<=t3:
+                        pos["t3_done"]=True
+                        t3q=pos.get("qty_t3",pos["qty_remaining"])
+                        if t3q>0:pending.append(("T3_HIT",t3q,ltp))
+        for reason,qty,exit_ltp in pending:
+            self.exit_position(sym,qty,exit_ltp,reason)
+            if reason=="SL_HIT":self.on_sl_hit and self.on_sl_hit(sym,exit_ltp,pos)
+            else:self.on_target and self.on_target(sym,reason.replace("_HIT",""),exit_ltp,pos)
     def _load_history(self):
         """Load trade history from file"""
         try:
@@ -297,7 +323,12 @@ class OrderManager:
             "entry_price":pos["entry_price"],"exit_price":pos.get("exit_price",0),
             "entry_time":pos["entry_time"],"exit_time":pos.get("exit_time",""),
             "gross_pnl":pos.get("gross_pnl",0),"charges":pos.get("charges",0),
-            "net_pnl":net,"reason":pos.get("reason",""),"paper_mode":pos["paper_mode"],"date":self.today_str}
+            "net_pnl":net,"reason":pos.get("reason",""),"paper_mode":pos["paper_mode"],"date":self.today_str,
+            "sl_price":pos.get("sl_price_entry",pos.get("sl_price")),
+            "target1":pos.get("target1_entry",pos.get("target1")),
+            "target2":pos.get("target2_entry",pos.get("target2")),
+            "target3":pos.get("target3_entry",pos.get("target3")),
+            "t1_done":pos.get("t1_done",False),"t2_done":pos.get("t2_done",False),"t3_done":pos.get("t3_done",False)}
         today["trade_log"].append(rec);self.trade_log.append(rec)
         self._save_history()  # Save to file immediately
     def get_daily_report(self):
