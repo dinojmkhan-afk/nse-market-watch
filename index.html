@@ -31,46 +31,54 @@ body{background:var(--bg);color:var(--text);font-family:"Segoe UI",system-ui,san
 /* ── Controls bar ── */
 .login-bar{background:var(--surface);border-bottom:1px solid var(--border);padding:5px 12px;display:flex;align-items:center;gap:7px;flex-wrap:wrap;}
 .bar-sep{width:1px;height:18px;background:var(--border);flex-shrink:0;align-self:center;}
-.login-btn{background:var(--accent);color:#000;border:none;padding:4px 14px;border-radius:6px;font-size:0.72rem;font-weight:700;cursor:pointer;white-space:nowrap;}
-.logout-btn{background:var(--border);color:var(--text);border:none;padding:3px 9px;border-radius:6px;font-size:0.68rem;cursor:pointer;}
-.logged-info{font-size:0.7rem;color:var(--green);font-weight:700;}
-.mode-toggle{display:flex;align-items:center;gap:5px;margin-left:auto;}
-.mode-label{font-size:0.65rem;color:var(--muted);}
-.toggle-wrap{display:flex;background:var(--bg);border:1px solid var(--border);border-radius:20px;overflow:hidden;}
-.toggle-btn{padding:3px 10px;font-size:0.68rem;font-weight:700;border:none;cursor:pointer;transition:all .2s;}
-.toggle-btn.paper.active{background:var(--gold);color:#000;}
-.toggle-btn.real.active{background:var(--green);color:#000;}
-.toggle-btn.inactive{background:transparent;color:var(--muted);}
-.strat-btn{padding:4px 11px;border-radius:6px;border:none;font-size:0.7rem;font-weight:700;cursor:pointer;white-space:nowrap;}
+.login-btn{background:var(--accent);color:#000;border:none;padding:0 16px;border-radius:8px;font-size:0.75rem;font-weight:700;cursor:pointer;white-space:nowrap;min-height:40px;display:inline-flex;align-items:center;}
+.logout-btn{background:var(--border);color:var(--text);border:none;padding:0 12px;border-radius:8px;font-size:0.7rem;cursor:pointer;min-height:36px;display:inline-flex;align-items:center;}
+.logged-info{font-size:0.72rem;color:var(--green);font-weight:700;}
+.strat-btn{padding:0 14px;border-radius:8px;border:none;font-size:0.75rem;font-weight:700;cursor:pointer;white-space:nowrap;min-height:40px;display:inline-flex;align-items:center;}
 .strat-off{background:rgba(139,148,158,0.15);border:1px solid var(--border);color:var(--muted);}
 .strat-on{background:var(--green);color:#000;}
-.capital-wrap{display:flex;align-items:center;gap:4px;}
+.capital-wrap{display:flex;align-items:center;gap:5px;}
 .capital-label{font-size:0.65rem;color:var(--muted);}
-.capital-input{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:3px 6px;border-radius:6px;font-size:0.7rem;width:82px;outline:none;}
+.capital-input{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:0 8px;border-radius:8px;font-size:0.75rem;width:88px;outline:none;min-height:36px;}
 .capital-input:focus{border-color:var(--accent);}
-.capital-btn{background:var(--purple);color:#fff;border:none;padding:3px 8px;border-radius:6px;font-size:0.66rem;font-weight:700;cursor:pointer;}
-.btn{padding:4px 10px;border-radius:6px;border:none;font-size:0.68rem;font-weight:700;cursor:pointer;white-space:nowrap;}
+.capital-btn{background:var(--purple);color:#fff;border:none;padding:0 12px;border-radius:8px;font-size:0.7rem;font-weight:700;cursor:pointer;min-height:36px;display:inline-flex;align-items:center;}
+.toggle-wrap{display:flex;background:var(--bg);border:1px solid var(--border);border-radius:20px;overflow:hidden;}
+.toggle-btn{padding:0 14px;font-size:0.72rem;font-weight:700;border:none;cursor:pointer;transition:all .2s;min-height:36px;display:inline-flex;align-items:center;white-space:nowrap;}
+.toggle-btn.paper.active{background:var(--gold);color:#000;}
+.toggle-btn.real.active{background:var(--green);color:#000;}
+.toggle-btn.strat-sel.active{background:var(--purple);color:#fff;}
+.toggle-btn.inactive{background:transparent;color:var(--muted);}
+.btn{padding:0 12px;border-radius:8px;border:none;font-size:0.72rem;font-weight:700;cursor:pointer;white-space:nowrap;min-height:36px;display:inline-flex;align-items:center;}
 .btn-red{background:rgba(248,81,73,0.15);border:1px solid rgba(248,81,73,0.5);color:var(--red);}
 .btn-red:hover{background:rgba(248,81,73,0.28);}
 .btn-muted{background:var(--border);color:var(--text);}
 
-/* ── P&L summary bar — compact inline strip ── */
-.pnl-bar{background:var(--surface);border-bottom:1px solid var(--border);padding:0 8px;display:flex;align-items:center;flex-wrap:wrap;min-height:32px;}
-.pnl-item{display:flex;align-items:center;gap:5px;padding:5px 10px;border-right:1px solid var(--border);white-space:nowrap;}
-.pnl-item:last-child{border-right:none;}
-.pnl-item.headline{background:rgba(0,212,255,0.06);border-right-color:rgba(0,212,255,0.2);}
-.pnl-lbl{font-size:0.6rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.4px;}
-.pnl-val{font-size:0.75rem;font-weight:800;}
-.pnl-item.headline .pnl-val{font-size:0.82rem;color:var(--accent);}
+/* ── Shared color helpers ── */
 .pv-pos{color:var(--green);}.pv-neg{color:var(--red);}.pv-neu{color:var(--accent);}
-@media(max-width:800px){.pnl-item{padding:4px 7px;}.pnl-lbl{font-size:0.55rem;}.pnl-val{font-size:0.7rem;}}
-@media(max-width:500px){.pnl-item.hide-sm{display:none;}}
+
+/* ── Today's P&L summary strip (inside Positions tab) ── */
+.pos-pnl-strip{display:flex;flex-wrap:wrap;gap:8px;padding:12px 14px;background:var(--surface);border-bottom:1px solid var(--border);}
+.pos-pnl-card{background:var(--card);border-radius:8px;padding:10px 14px;flex:1;min-width:110px;border:1px solid var(--border);display:flex;flex-direction:column;}
+.pos-pnl-card.hl{border-color:rgba(0,212,255,0.3);background:rgba(0,212,255,0.05);}
+.pos-pnl-lbl{font-size:0.58rem;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;font-weight:600;}
+.pos-pnl-val{font-size:1rem;font-weight:800;margin-top:5px;}
+.pos-pnl-card.hl .pos-pnl-val{font-size:1.1rem;color:var(--accent);}
+
+/* ── Positions actions bar ── */
+.pos-actions{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:var(--surface);border-bottom:1px solid var(--border);gap:8px;flex-wrap:wrap;}
+.pos-actions-title{font-size:0.82rem;font-weight:700;color:var(--purple);display:flex;align-items:center;gap:6px;}
+.pos-actions-btns{display:flex;gap:8px;flex-shrink:0;}
+.btn-stop{background:rgba(248,81,73,0.18);border:1px solid rgba(248,81,73,0.6);color:var(--red);padding:8px 16px;border-radius:8px;font-size:0.78rem;font-weight:800;cursor:pointer;min-height:40px;white-space:nowrap;transition:background .15s;}
+.btn-stop:hover{background:rgba(248,81,73,0.35);}
+.exit-all-btn{background:rgba(248,81,73,0.15);border:1px solid rgba(248,81,73,0.4);color:var(--red);border-radius:8px;padding:8px 16px;font-size:0.78rem;font-weight:700;cursor:pointer;min-height:40px;transition:background .15s;}
+.exit-all-btn:hover{background:rgba(248,81,73,0.28);}
+@media(max-width:600px){.pos-pnl-card{min-width:90px;padding:8px 10px;}.pos-pnl-val{font-size:0.88rem;}.pos-pnl-card.hl .pos-pnl-val{font-size:0.95rem;}}
 
 /* ── Tab navigation ── */
 .tab-nav{background:var(--surface);border-bottom:2px solid var(--border);display:flex;overflow-x:auto;-webkit-overflow-scrolling:touch;}
 .tab-nav::-webkit-scrollbar{display:none;}
 .tab-nav{gap:2px;padding:0 4px;}
-.tab-btn{padding:10px 18px;font-size:0.78rem;font-weight:700;border:none;background:transparent;color:var(--text);cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;white-space:nowrap;transition:background .2s,color .2s,border-color .2s,transform .15s;display:flex;align-items:center;gap:6px;border-radius:6px 6px 0 0;}
+.tab-btn{padding:12px 18px;font-size:0.78rem;font-weight:700;border:none;background:transparent;color:var(--text);cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-2px;white-space:nowrap;transition:background .2s,color .2s,border-color .2s,transform .15s;display:flex;align-items:center;gap:6px;border-radius:6px 6px 0 0;min-height:48px;}
 .tab-btn .tab-ico{font-size:1rem;line-height:1;}
 /* Inactive — tinted background with high-contrast text */
 .tab-btn.tone-cyan{background:rgba(0,212,255,0.14);color:#9aeaff;border-bottom-color:rgba(0,212,255,0.35);}
@@ -317,10 +325,12 @@ td{padding:7px 12px;font-size:0.75rem;white-space:nowrap;}
 
 /* ── Responsive ── */
 @media(max-width:768px){
-  .tab-btn{padding:8px 12px;font-size:0.72rem;}
-  .tab-btn .tab-ico{font-size:0.85rem;}
+  .tab-btn{padding:10px 12px;font-size:0.72rem;min-height:44px;}
+  .tab-btn .tab-ico{font-size:0.9rem;}
   .signals-grid{grid-template-columns:1fr 1fr;}
   .pos-table th,.pos-table td{padding:6px 7px;font-size:0.68rem;}
+  .pos-actions{flex-direction:column;align-items:flex-start;gap:10px;}
+  .pos-actions-btns{width:100%;justify-content:flex-end;}
 }
 @media(max-width:600px){
   td,th{padding:5px 7px;font-size:0.67rem;}
@@ -332,14 +342,17 @@ td{padding:7px 12px;font-size:0.75rem;white-space:nowrap;}
   .search-input:focus{width:150px;}
   .capital-input{width:72px;}
   .toolbar{gap:4px;padding:4px 8px;}
-  .login-bar{padding:4px 8px;gap:5px;}
-  .pnl-bar{padding:0 4px;}
+  .login-bar{padding:5px 10px;gap:6px;}
+  .strat-btn{font-size:0.7rem;padding:0 10px;}
+  .btn-stop,.exit-all-btn{padding:8px 12px;font-size:0.72rem;}
 }
 @media(max-width:480px){
-  .pnl-item.hide-sm{display:none;}
-  .tab-btn{padding:7px 9px;font-size:0.66rem;}
+  .tab-btn{padding:9px 10px;font-size:0.65rem;min-height:44px;}
   .hdr{padding:6px 10px;}
-  .filter-btn{padding:3px 7px;font-size:0.63rem;}
+  .filter-btn{padding:4px 8px;font-size:0.65rem;min-height:36px;}
+  .btn-stop,.exit-all-btn{min-height:44px;font-size:0.75rem;}
+  .pos-actions-btns{width:100%;}
+  .btn-stop,.exit-all-btn{flex:1;justify-content:center;}
 }
 </style>
 </head>
@@ -353,7 +366,7 @@ td{padding:7px 12px;font-size:0.75rem;white-space:nowrap;}
   </span>
   <div class="hdr-right">
     <div class="badge badge-live"><div class="dot"></div>LIVE</div>
-    <div class="badge" id="modeBadge" style="background:rgba(210,153,34,0.15);border:1px solid var(--gold);color:var(--gold)">PAPER</div>
+    <div class="badge" id="modeBadge" style="background:rgba(210,153,34,0.15);border:1px solid var(--gold);color:var(--gold)">📄 PAPER</div>
     <div class="ws-status"><div class="ws-dot" id="wsDot"></div><span id="wsLabel" style="color:var(--muted);font-size:0.65rem">WS</span></div>
     <span class="mkt-status" id="mktStatus">--</span>
     <span class="clock" id="clock">--:--:--</span>
@@ -362,43 +375,32 @@ td{padding:7px 12px;font-size:0.75rem;white-space:nowrap;}
 
 <!-- ── Controls bar ── -->
 <div class="login-bar">
-  <div id="loginSection"><button class="login-btn" onclick="doLogin()">🔐 Login</button></div>
-  <div id="loggedSection" style="display:none;align-items:center;gap:6px;">
+  <div id="loginSection" style="display:flex;align-items:center;gap:6px;">
+    <button class="login-btn" onclick="doLogin()">🔐 OAuth Login</button>
+  </div>
+  <div id="loggedSection" style="display:none;align-items:center;gap:8px;">
     <span class="logged-info">✅ FZ07236</span>
     <button class="logout-btn" onclick="doLogout()">Logout</button>
   </div>
   <div class="bar-sep"></div>
   <button class="strat-btn strat-off" id="stratBtn" onclick="toggleStrategy()">⚡ Strategy OFF</button>
-  <button class="btn btn-red" onclick="emergencyStop()">🛑 Stop</button>
-  <button class="btn" id="trialBtn" onclick="toggleTrial()" style="background:rgba(163,113,247,0.15);border:1px solid rgba(163,113,247,0.5);color:var(--purple)">🧪 Trial</button>
+  <div class="toggle-wrap" style="border-color:rgba(163,113,247,0.4)">
+    <button class="toggle-btn strat-sel active" id="sel1Btn" onclick="selectStrategy(1)">ORB</button>
+    <button class="toggle-btn strat-sel inactive" id="sel2Btn" onclick="selectStrategy(2)">S2</button>
+  </div>
   <div class="bar-sep"></div>
   <div class="capital-wrap">
     <span class="capital-label">Capital Rs</span>
     <input type="number" class="capital-input" id="capitalInput" value="20000" min="1000">
     <button class="capital-btn" onclick="setCapital()">Set</button>
   </div>
-  <div class="mode-toggle">
-    <span class="mode-label">MODE:</span>
-    <div class="toggle-wrap">
-      <button class="toggle-btn paper active" id="paperBtn" onclick="setMode(true)">📄 PAPER</button>
-      <button class="toggle-btn real inactive" id="realBtn" onclick="setMode(false)">💰 REAL</button>
-    </div>
+  <div class="bar-sep"></div>
+  <div class="toggle-wrap">
+    <button class="toggle-btn paper active" id="paperBtn" onclick="setMode(true)">📄 PAPER</button>
+    <button class="toggle-btn real inactive" id="realBtn" onclick="setMode(false)">💰 REAL</button>
   </div>
 </div>
 
-<!-- ── P&L summary bar ── -->
-<div class="pnl-bar">
-  <div class="pnl-item headline"><span class="pnl-lbl">Net P&L</span><span class="pnl-val pv-neu" id="pnlNet">Rs 0</span></div>
-  <div class="pnl-item hide-sm"><span class="pnl-lbl">Gross</span><span class="pnl-val" id="pnlGross">Rs 0</span></div>
-  <div class="pnl-item hide-sm"><span class="pnl-lbl">Charges</span><span class="pnl-val" id="pnlCharges">-Rs 0</span></div>
-  <div class="pnl-item"><span class="pnl-lbl">Trades</span><span class="pnl-val" id="pnlTrades">0</span></div>
-  <div class="pnl-item"><span class="pnl-lbl">Wins</span><span class="pnl-val pv-pos" id="pnlWins">0</span></div>
-  <div class="pnl-item"><span class="pnl-lbl">Losses</span><span class="pnl-val pv-neg" id="pnlLosses">0</span></div>
-  <div class="pnl-item hide-sm"><span class="pnl-lbl">Open</span><span class="pnl-val" id="pnlOpen">0</span></div>
-  <div class="pnl-item"><span class="pnl-lbl">Capital</span><span class="pnl-val pv-neu" id="pnlCapital">Rs 20,000</span></div>
-  <div class="pnl-item"><span class="pnl-lbl">Buying Power</span><span class="pnl-val pv-neu" id="stBP">Rs 80,000</span></div>
-  <div class="pnl-item hide-sm" id="cashBarItem" style="display:none!important"><span class="pnl-lbl">Cash</span><span class="pnl-val pv-neu" id="brokerCashBar">--</span></div>
-</div>
 
 <!-- ── Tab navigation ── -->
 <div class="tab-nav">
@@ -503,23 +505,67 @@ td{padding:7px 12px;font-size:0.75rem;white-space:nowrap;}
      Tab 3 — Positions
      ══════════════════════════════════════════════ -->
 <div class="tab-panel" id="tab-positions">
-  <div class="tab-content">
-    <div class="pos-header-row">
-      <span style="font-size:0.82rem;font-weight:700;color:var(--purple)">
-        📈 Open Positions <span id="posCount" style="color:var(--muted);font-weight:400">(0)</span>
-      </span>
+
+  <!-- Today's P&L Summary -->
+  <div class="pos-pnl-strip">
+    <div class="pos-pnl-card hl">
+      <div class="pos-pnl-lbl">Net P&amp;L Today</div>
+      <div class="pos-pnl-val pv-neu" id="pnlNet">+ Rs 0</div>
+    </div>
+    <div class="pos-pnl-card">
+      <div class="pos-pnl-lbl">Gross</div>
+      <div class="pos-pnl-val" id="pnlGross">+ Rs 0</div>
+    </div>
+    <div class="pos-pnl-card">
+      <div class="pos-pnl-lbl">Charges</div>
+      <div class="pos-pnl-val pv-neg" id="pnlCharges">- Rs 0</div>
+    </div>
+    <div class="pos-pnl-card">
+      <div class="pos-pnl-lbl">Trades</div>
+      <div class="pos-pnl-val" id="pnlTrades">0</div>
+    </div>
+    <div class="pos-pnl-card">
+      <div class="pos-pnl-lbl">Wins</div>
+      <div class="pos-pnl-val pv-pos" id="pnlWins">0</div>
+    </div>
+    <div class="pos-pnl-card">
+      <div class="pos-pnl-lbl">Losses</div>
+      <div class="pos-pnl-val pv-neg" id="pnlLosses">0</div>
+    </div>
+    <div class="pos-pnl-card">
+      <div class="pos-pnl-lbl">Open Positions</div>
+      <div class="pos-pnl-val pv-neu" id="pnlOpen">0</div>
+    </div>
+    <div class="pos-pnl-card">
+      <div class="pos-pnl-lbl">Capital</div>
+      <div class="pos-pnl-val pv-neu" id="pnlCapital">Rs 20,000</div>
+    </div>
+    <div class="pos-pnl-card">
+      <div class="pos-pnl-lbl">Buying Power</div>
+      <div class="pos-pnl-val pv-neu" id="stBP">Rs 80,000</div>
+    </div>
+  </div>
+
+  <!-- Actions bar -->
+  <div class="pos-actions">
+    <div class="pos-actions-title">
+      📈 Open Positions <span id="posCount" style="color:var(--muted);font-weight:400;font-size:0.75rem">(0)</span>
+    </div>
+    <div class="pos-actions-btns">
+      <button class="btn-stop" onclick="emergencyStop()">🛑 Emergency Stop</button>
       <button class="exit-all-btn" onclick="exitAllPositions()">⚡ Exit All</button>
     </div>
-    <div style="overflow-x:auto" id="posList">
-      <table class="pos-table">
-        <thead><tr>
-          <th>SYMBOL</th><th>LTP</th><th>QTY</th>
-          <th>T1</th><th>T2</th><th>T3</th>
-          <th>SL</th><th>P&amp;L</th><th>EXIT</th>
-        </tr></thead>
-        <tbody><tr><td colspan="9" class="empty-state">No open positions</td></tr></tbody>
-      </table>
-    </div>
+  </div>
+
+  <div style="overflow-x:auto" id="posList">
+    <table class="pos-table">
+      <thead><tr>
+        <th>SYMBOL</th><th>LTP</th><th>QTY</th>
+        <th>T1</th><th>T2</th><th>T3</th>
+        <th>SL</th><th>P&amp;L</th><th>EXIT</th>
+      </tr></thead>
+      <tbody><tr><td colspan="9" class="empty-state">No open positions</td></tr></tbody>
+    </table>
   </div>
 </div>
 
@@ -985,7 +1031,7 @@ function playBeep(){
   }catch(e){console.log('beep err',e);}
 }
 
-var sigCache=[],currentSignal=null,isLoggedIn=false,strategyOn=false,isPaper=true;
+var sigCache=[],currentSignal=null,isLoggedIn=false,strategyOn=false,isPaper=true,activeStrategy=1;
 
 function pad(n){return String(n).padStart(2,"0");}
 
@@ -1044,15 +1090,15 @@ function setMode(paper){
 
 function updateModeBadge(paper){
   var badge=document.getElementById("modeBadge");
-  var pb=document.getElementById("paperBtn"),rb2=document.getElementById("realBtn");
+  var pb=document.getElementById("paperBtn"),rb=document.getElementById("realBtn");
   if(paper){
-    badge.textContent="PAPER";badge.style.background="rgba(210,153,34,0.15)";badge.style.borderColor="var(--gold)";badge.style.color="var(--gold)";
-    pb.className="toggle-btn paper active";rb2.className="toggle-btn real inactive";
+    badge.textContent="📄 PAPER";badge.style.background="rgba(210,153,34,0.15)";badge.style.borderColor="var(--gold)";badge.style.color="var(--gold)";
+    pb.className="toggle-btn paper active";rb.className="toggle-btn real inactive";
     document.getElementById("oMode").textContent="📄 PAPER TRADE";
     document.getElementById("oWarning").textContent="";
   }else{
-    badge.textContent="REAL $";badge.style.background="rgba(63,185,80,0.15)";badge.style.borderColor="var(--green)";badge.style.color="var(--green)";
-    rb2.className="toggle-btn real active";pb.className="toggle-btn paper inactive";
+    badge.textContent="💰 REAL";badge.style.background="rgba(63,185,80,0.15)";badge.style.borderColor="var(--green)";badge.style.color="var(--green)";
+    rb.className="toggle-btn real active";pb.className="toggle-btn paper inactive";
     document.getElementById("oMode").textContent="💰 REAL MONEY TRADE";
     document.getElementById("oWarning").textContent="⚠️ Real money will be used!";
   }
@@ -1069,6 +1115,19 @@ function updateCapitalDisplay(d){
   if(!d)return;
   document.getElementById("pnlCapital").textContent="Rs "+(d.capital||20000).toLocaleString();
   document.getElementById("stBP").textContent="Rs "+(d.buying_power||80000).toLocaleString();
+}
+
+function selectStrategy(n){
+  activeStrategy=n;
+  var b1=document.getElementById('sel1Btn'),b2=document.getElementById('sel2Btn');
+  if(n===1){
+    b1.className='toggle-btn strat-sel active';b2.className='toggle-btn strat-sel inactive';
+  }else{
+    b2.className='toggle-btn strat-sel active';b1.className='toggle-btn strat-sel inactive';
+  }
+  fetch(SRV+'/api/strategy/select',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({strategy:n})}).catch(function(){});
+  showToast('Strategy '+(n===1?'1 — ORB':'2 — S2')+' selected','info');
 }
 
 function toggleStrategy(){
@@ -1609,31 +1668,6 @@ function loadPositions(){
 
 function fetchPositions(){loadPositions();}
 
-// ── Trial run ─────────────────────────────────────────────────
-var trialActive=false;
-function toggleTrial(){
-  var action=trialActive?'Stop Trial':'Start Trial';
-  requirePin('🧪 '+action,'Enter PIN to '+(trialActive?'stop':'start')+' trial mode',async function(){
-    var btn=document.getElementById('trialBtn');
-    if(trialActive){
-      var r=await fetch(SRV+'/api/strategy/trial-stop',{method:'POST'});
-      var d=await r.json();
-      trialActive=false;
-      btn.textContent='🧪 Trial';btn.style.background='rgba(163,113,247,0.15)';btn.style.color='var(--purple)';
-      showToast('Trial stopped','info');
-    }else{
-      var r=await fetch(SRV+'/api/strategy/trial',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({duration:10})});
-      var d=await r.json();
-      if(d.success){
-        trialActive=true;
-        btn.textContent='🧪 Trial ON';btn.style.background='var(--purple)';btn.style.color='#fff';
-        showToast('🧪 '+d.message,'info');
-        fetchSignals();
-      }else showToast('Trial failed: '+(d.error||'unknown'),'error');
-    }
-  });
-}
-
 function clearPnlHistory(){
   requirePin('🗑 Clear P&L History','Enter PIN to erase all previous days — today\'s data is kept',async function(){
     var r=await fetch(SRV+'/api/pnl/clear-history',{method:'POST'});
@@ -1681,11 +1715,6 @@ function renderBrokerFunds(d){
   document.getElementById('bfCash').textContent=fmtRs(d.cash);
   document.getElementById('bfUsed').textContent=fmtRs(d.used);
   document.getElementById('bfPayin').textContent=fmtRs(d.payin);
-  // Also update P&L bar cash item
-  var cashBar=document.getElementById('brokerCashBar');
-  var cashItem=document.getElementById('cashBarItem');
-  if(cashBar){cashBar.textContent=fmtRs(d.available);}
-  if(cashItem){cashItem.style.cssText='display:flex!important';}
 }
 
 function statusChip(status){

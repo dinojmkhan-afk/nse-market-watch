@@ -1308,34 +1308,6 @@ def shoonya_logout():
     d=_shload();d["session_token"]="";d["token_date"]=""
     _shsave(d);return jsonify({"success":True})
 
-_FT_CREDS=os.path.join(os.path.dirname(__file__),".flattrade_creds.json")
-
-def _ftload():
-    try:
-        if os.path.exists(_FT_CREDS):
-            with open(_FT_CREDS) as f: return json.load(f)
-    except: pass
-    return {"pwd_hash":"","totp_secret":"","vc":"","api_key":""}
-
-def _ftsave(d):
-    with open(_FT_CREDS,"w") as f: json.dump(d,f)
-
-@app.route("/api/flattrade/config",methods=["GET","POST"])
-def flattrade_config_endpoint():
-    if request.method=="GET":
-        d=_ftload()
-        return jsonify({"success":True,
-            "configured":bool(d.get("pwd_hash") and d.get("totp_secret")),
-            "vc":d.get("vc",""),"has_api_key":bool(d.get("api_key"))})
-    data=request.json or {}
-    d=_ftload()
-    for k in ("vc","api_key","totp_secret"):
-        if k in data: d[k]=data[k].strip()
-    if "pwd" in data and data["pwd"].strip():
-        d["pwd_hash"]=_hashlib.sha256(data["pwd"].strip().encode()).hexdigest()
-    _ftsave(d)
-    return jsonify({"success":True,"message":"Flattrade credentials saved"})
-
 @app.route("/api/backtest/run",methods=["POST"])
 def backtest_run():
     global _backtest_proc
