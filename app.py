@@ -552,13 +552,14 @@ def on_candle_close(sym,candle):
         signal=orb.check_breakout(sym,candle,nifty_chg,market_data)
         if signal:
             result=om.place_order(signal)
-            if not result["success"]:
+            if result["success"]:
+                orb.record_trade_opened()
+            else:
                 print(f"[APP] Order failed {sym}: {result.get('error')}")
                 orb.active_signals.pop(sym,None)
 
 def master_clock_loop():
     or_finalized_today=False;daily_reset_done=False;last_date=None;ws_check_done=False
-    print("[CLOCK] Master clock started")
     while True:
         try:
             now=_ist();today=now.strftime("%Y-%m-%d")
@@ -578,7 +579,7 @@ def master_clock_loop():
             if h==9 and m==10 and s<=30 and not ws_check_done:
                 ws_check_done=True
                 if not ws_has_live_ticks():
-                    print("[CLOCK] WARNING: WS not connected at 9:10 AM — OR window opens in 5 minutes! Login or restart WS now.")
+                    print("[CLOCK] WARNING: WS not connected at 9:10 AM — OR window opens in 5 minutes! Login now.")
                 else:
                     print("[CLOCK] WS OK at 9:10 AM — ready for OR window")
             if h==9 and m==20 and s<=10 and not or_finalized_today and strategy_active:
@@ -742,7 +743,7 @@ def fetch_nse_loop():
                             signals_placed=0
                             for sym,d in snap.items():
                                 if is_index(sym):continue
-                                if not orb.trial_mode and orb.trades_today>=orb.config["MAX_TRADES_DAY"]:break
+                                if not orb.trial_mode and orb.trades_opened_today>=orb.config["MAX_TRADES_DAY"]:break
                                 if not orb.trial_mode and len(om.positions)>=orb.config["MAX_TRADES_DAY"]:break
                                 if signals_placed>=1:break
                                 ltp=d.get("ltp",0)
@@ -762,7 +763,8 @@ def fetch_nse_loop():
                                 if signal:
                                     result=om.place_order(signal)
                                     if result.get("success"):
-                                        print(f"[ORB] AUTO ORDER #{orb.trades_today}: {sym} {signal['direction']}")
+                                        orb.record_trade_opened()
+                                        print(f"[ORB] AUTO ORDER #{orb.trades_opened_today}: {sym} {signal['direction']}")
                                         signals_placed+=1
                                     else:
                                         orb.active_signals.pop(sym,None)
@@ -772,6 +774,47 @@ def fetch_nse_loop():
             print(f"[NSE] Error: {e}")
         time.sleep(5)
 
+def _apply_flattrade_token(token):
+    """Common post-login: set session_token, start WS, auto-start strategy."""
+    global session_token,ws_engine,strategy_active
+    session_token=token
+    print(f"[Auth] Token applied: {token[:12]}...",flush=True)
+    if ws_engine:
+        try: ws_engine.stop()
+        except: pass
+        time.sleep(0.5)
+    ws_engine=FlattradeWebSocket(session_token,CLIENT_ID,on_tick,on_candle_close,on_vwap_update=orb.update_vwap)
+    ws_engine.start()
+    threading.Thread(target=start_ws_subscription,daemon=True).start()
+    ist_now=_ist()
+    if ist_now.weekday()<5:
+        mins_now=ist_now.hour*60+ist_now.minute
+        if 8*60<=mins_now<=15*60+30:
+            strategy_active=True
+            if orb.trades_today==0 and orb.daily_pnl==0:orb.reset_daily()
+            if orb.trading_stopped:orb.trading_stopped=False;orb.stop_reason=""
+            save_state(True)
+            print(f"[Auth] Strategy AUTO-STARTED at {ist_now.strftime('%H:%M')}",flush=True)
+            if mins_now>9*60+20:
+                built=0
+                with lock:
+                    for sym,d in market_data.items():
+                        if is_index(sym):continue
+                        op=d.get("open",0);ltp=d.get("ltp",0)
+                        if op>0 and ltp>0:
+                            hi=d.get("high",op);lo=d.get("low",op)
+                            or_hi=round(max(hi,op*1.002),2);or_lo=round(min(lo,op*0.998),2)
+                            or_sz=round(or_hi-or_lo,2);or_pct=round((or_sz/or_lo)*100,2)
+                            orb.or_data[sym]={"high":or_hi,"low":or_lo,"size":or_sz,
+                                "size_pct":or_pct,"volume":d.get("volume_raw",0),"built":True}
+                            built+=1
+                if built>0:print(f"[ORB] Late OR built on login: {built} stocks",flush=True)
+        else:
+            save_state(strategy_active)
+    else:
+        save_state(strategy_active)
+    return True
+
 def exchange_code(code):
     global session_token,ws_engine,strategy_active
     try:
@@ -780,46 +823,7 @@ def exchange_code(code):
         print(f"[Auth] Response: {r.text[:200]}",flush=True)
         data=r.json()
         if data.get("token"):
-            session_token=data["token"]
-            print(f"[Auth] SUCCESS! Token: {session_token}",flush=True)
-            # Stop any existing engine before creating new one — prevents orphan ticks/duplicate orders
-            if ws_engine:
-                try: ws_engine.stop()
-                except: pass
-                time.sleep(0.5)
-            ws_engine=FlattradeWebSocket(session_token,CLIENT_ID,on_tick,on_candle_close,on_vwap_update=orb.update_vwap)
-            ws_engine.start()
-            threading.Thread(target=start_ws_subscription,daemon=True).start()
-            # Auto-start strategy on market-hours login so trading never silently misses the session
-            ist_now=_ist()
-            if ist_now.weekday()<5:
-                mins_now=ist_now.hour*60+ist_now.minute
-                if 8*60<=mins_now<=15*60+30:
-                    strategy_active=True
-                    if orb.trades_today==0 and orb.daily_pnl==0:orb.reset_daily()
-                    if orb.trading_stopped:orb.trading_stopped=False;orb.stop_reason=""
-                    save_state(True)
-                    print(f"[Auth] Strategy AUTO-STARTED at {ist_now.strftime('%H:%M')}",flush=True)
-                    # Late OR build if logged in after OR window closed
-                    if mins_now>9*60+20:
-                        built=0
-                        with lock:
-                            for sym,d in market_data.items():
-                                if is_index(sym):continue
-                                op=d.get("open",0);ltp=d.get("ltp",0)
-                                if op>0 and ltp>0:
-                                    hi=d.get("high",op);lo=d.get("low",op)
-                                    or_hi=round(max(hi,op*1.002),2);or_lo=round(min(lo,op*0.998),2)
-                                    or_sz=round(or_hi-or_lo,2);or_pct=round((or_sz/or_lo)*100,2)
-                                    orb.or_data[sym]={"high":or_hi,"low":or_lo,"size":or_sz,
-                                        "size_pct":or_pct,"volume":d.get("volume_raw",0),"built":True}
-                                    built+=1
-                        if built>0:print(f"[ORB] Late OR built on login: {built} stocks",flush=True)
-                else:
-                    save_state(strategy_active)  # persist token outside market hours
-            else:
-                save_state(strategy_active)  # persist token on weekends
-            return True
+            return _apply_flattrade_token(data["token"])
         print(f"[Auth] Failed: {data}",flush=True);return False
     except Exception as e:
         print(f"[Auth] Error: {e}",flush=True);return False
@@ -861,7 +865,7 @@ def position_sync_loop():
                 if getattr(ws_engine,"was_ever_connected",False) and session_token:
                     print("[APP] WS token expired — clearing session")
                     session_token=None
-                save_state(False)
+                save_state(strategy_active)
             if 9*60+15<=mins<=15*60+30:sync_flattrade_positions()
         except Exception as e:
             print(f"[POS] Loop error: {e}")
@@ -989,6 +993,18 @@ def start_strategy():
                     built+=1
         print(f"[ORB] Late OR built: {built} stocks")
     return jsonify({"success":True,"or_built":len(orb.or_data)})
+
+active_strategy=1  # 1=ORB, 2=Strategy2 (placeholder)
+
+@app.route("/api/strategy/select",methods=["POST"])
+def select_strategy():
+    global active_strategy
+    data=request.json or {}
+    n=int(data.get("strategy",1))
+    if n not in (1,2):return jsonify({"success":False,"error":"Invalid strategy number"})
+    active_strategy=n
+    print(f"[Strategy] Selected: {'ORB' if n==1 else 'Strategy2 (placeholder)'}")
+    return jsonify({"success":True,"strategy":active_strategy})
 
 @app.route("/api/strategy/stop",methods=["POST"])
 def stop_strategy():
@@ -1161,8 +1177,9 @@ def orders_today():
         (paper if p["paper_mode"] else real).append(rec)
     for t in closed:
         rec=dict(t);rec.update({"qty_remaining":0,"ltp":t.get("exit_price",0),
-            "sl_price":None,"target1":None,"target2":None,
-            "t1_done":False,"t2_done":False,"t3_done":False,"status":"CLOSED","order_id":"","product":""})
+            "sl_price":t.get("sl_price"),"target1":t.get("target1"),"target2":t.get("target2"),
+            "t1_done":t.get("t1_done",False),"t2_done":t.get("t2_done",False),"t3_done":t.get("t3_done",False),
+            "status":"CLOSED","order_id":t.get("order_id",""),"product":t.get("product","")})
         (paper if t.get("paper_mode") else real).append(rec)
     for lst in (paper,real):lst.sort(key=lambda x:x.get("entry_time",""),reverse=True)
     return jsonify({"success":True,"paper":paper,"real":real,"date":today})
@@ -1192,7 +1209,7 @@ def clear_today_pnl():
         for s in paper_syms:del om.positions[s]
     om._save_history()
     # Reset ORB daily counters too
-    orb.trades_today=0;orb.losses_today=0;orb.consecutive_loss=0
+    orb.trades_today=0;orb.trades_opened_today=0;orb.losses_today=0;orb.consecutive_loss=0
     orb.daily_pnl=0;orb.trading_stopped=False;orb.stop_reason=""
     with orb.lock:orb.active_signals.clear()
     print(f"[PNL] Today's paper data cleared ({len(paper_syms)} positions, trades reset)")
@@ -1290,6 +1307,34 @@ def shoonya_login():
 def shoonya_logout():
     d=_shload();d["session_token"]="";d["token_date"]=""
     _shsave(d);return jsonify({"success":True})
+
+_FT_CREDS=os.path.join(os.path.dirname(__file__),".flattrade_creds.json")
+
+def _ftload():
+    try:
+        if os.path.exists(_FT_CREDS):
+            with open(_FT_CREDS) as f: return json.load(f)
+    except: pass
+    return {"pwd_hash":"","totp_secret":"","vc":"","api_key":""}
+
+def _ftsave(d):
+    with open(_FT_CREDS,"w") as f: json.dump(d,f)
+
+@app.route("/api/flattrade/config",methods=["GET","POST"])
+def flattrade_config_endpoint():
+    if request.method=="GET":
+        d=_ftload()
+        return jsonify({"success":True,
+            "configured":bool(d.get("pwd_hash") and d.get("totp_secret")),
+            "vc":d.get("vc",""),"has_api_key":bool(d.get("api_key"))})
+    data=request.json or {}
+    d=_ftload()
+    for k in ("vc","api_key","totp_secret"):
+        if k in data: d[k]=data[k].strip()
+    if "pwd" in data and data["pwd"].strip():
+        d["pwd_hash"]=_hashlib.sha256(data["pwd"].strip().encode()).hexdigest()
+    _ftsave(d)
+    return jsonify({"success":True,"message":"Flattrade credentials saved"})
 
 @app.route("/api/backtest/run",methods=["POST"])
 def backtest_run():
@@ -1618,8 +1663,8 @@ if __name__=="__main__":
             ws_engine.start()
             threading.Thread(target=start_ws_subscription,daemon=True).start()
     threading.Thread(target=_startup,daemon=True).start()
-    threading.Thread(target=master_clock_loop,daemon=True).start()
     print("[Server] Master clock started")
+    threading.Thread(target=master_clock_loop,daemon=True).start()
     threading.Thread(target=fetch_nse_loop,daemon=True).start()
     threading.Thread(target=position_sync_loop,daemon=True).start()
     print("[Server] Position sync started")

@@ -8,13 +8,13 @@ CONFIG={"CAPITAL":20000,"RISK_PCT":0.005,"MAX_TRADES_DAY":4,"MAX_DAILY_LOSS_PCT"
     "T1_EXIT_PCT":0.40,"T2_EXIT_PCT":0.40,"T3_EXIT_PCT":0.20,
     "MIN_PRICE":100,"MAX_PRICE":10000,"MIN_VOLUME":1000000,"MAX_CONSECUTIVE_LOSS":2,
     "SELL_RVOL_MIN":2.0,"VWAP_MEDIUM_MARGIN":0.002,"SL_DIRECTION_COOLDOWN_MINS":15,
-    "SELL_SIGNALS_ENABLED":False,
+    "SELL_SIGNALS_ENABLED":True,
     "T1_MULT":1.0,"T2_MULT":2.0,"T3_MULT":3.5}
 class ORBStrategy:
     def __init__(self,config=None):
         self.config=config or CONFIG;self.lock=threading.Lock()
         self.or_data={};self.avg_volumes={};self.volume_history=defaultdict(list)
-        self.active_signals={};self.trades_today=0;self.losses_today=0
+        self.active_signals={};self.trades_today=0;self.trades_opened_today=0;self.losses_today=0
         self.stock_margins={}  # {symbol: margin_multiplier} updated by app.py
         self.consecutive_loss=0;self.daily_pnl=0
         self.trading_stopped=False;self.stop_reason=""
@@ -201,9 +201,12 @@ class ORBStrategy:
         if intended=="SELL" and rvol<self.config.get("SELL_RVOL_MIN",self.config["RVOL_STRONG"]) and not self.trial_mode:
             print(f"[ORB] {sym} SELL skipped RVOL={rvol:.2f} < {self.config.get('SELL_RVOL_MIN',self.config['RVOL_STRONG']):.1f} (STRONG required for SHORT)")
             return None
-        # B3: Block second same-direction signal within the same 5-min candle
-        candle_bucket=candle.get("time",0)
-        if candle_bucket>0 and not self.trial_mode and self.last_signal_candle.get(intended)==candle_bucket:
+        # B3: Block second same-direction signal within the same 5-min window.
+        # Use a clock-based bucket (IST hour*60 + 5-min floor) so all stocks share
+        # the same bucket regardless of individual candle timestamp delivery order.
+        ist_now=datetime.datetime.now(datetime.timezone.utc).astimezone(datetime.timezone(datetime.timedelta(hours=5,minutes=30)))
+        candle_bucket=ist_now.hour*60+(ist_now.minute//5)*5
+        if not self.trial_mode and self.last_signal_candle.get(intended)==candle_bucket:
             print(f"[ORB] {sym} {intended} blocked — same-candle duplicate signal already fired this candle")
             return None
         # C2: Per-direction SL cooldown
@@ -267,11 +270,14 @@ class ORBStrategy:
             "target3":t3,"quantity":qty,"risk_amount":round(risk,2),"rr_ratio":rr,
             "rvol":round(rvol,2),"signal_strength":signal_strength,"margin":margin,
             "time":datetime.datetime.now().isoformat()}
+    def record_trade_opened(self):
+        self.trades_opened_today+=1
+
     def can_trade(self):
         if self.trading_stopped:return False,self.stop_reason
         if self.trial_mode:return True,""  # bypass all daily limits in trial mode
         cap=self.config["CAPITAL"];ml=cap*self.config["MAX_DAILY_LOSS_PCT"]
-        if self.trades_today>=self.config["MAX_TRADES_DAY"]:return False,"Max trades reached"
+        if self.trades_opened_today>=self.config["MAX_TRADES_DAY"]:return False,"Max trades reached"
         if self.daily_pnl<=-ml:self._stop(f"Daily loss limit Rs {ml}");return False,self.stop_reason
         if self.consecutive_loss>=self.config["MAX_CONSECUTIVE_LOSS"]:self._stop(f"{self.consecutive_loss} consecutive losses");return False,self.stop_reason
         return True,""
@@ -289,7 +295,7 @@ class ORBStrategy:
         cooldown=self.config.get("SL_DIRECTION_COOLDOWN_MINS",15)
         print(f"[ORB] SL cooldown armed: {direction} signals blocked for {cooldown}min")
     def reset_daily(self):
-        self.trades_today=0;self.losses_today=0;self.consecutive_loss=0
+        self.trades_today=0;self.trades_opened_today=0;self.losses_today=0;self.consecutive_loss=0
         self.daily_pnl=0;self.trading_stopped=False;self.stop_reason=""
         self.active_signals={};self.or_data={};self.volume_history=defaultdict(list)
         # Fix 12: Reset VWAP and Nifty daily
@@ -303,7 +309,7 @@ class ORBStrategy:
     def status(self):
         cap=self.config["CAPITAL"];ml=cap*self.config["MAX_DAILY_LOSS_PCT"]
         return{"trading_stopped":self.trading_stopped,"stop_reason":self.stop_reason,
-            "trades_today":self.trades_today,"max_trades":self.config["MAX_TRADES_DAY"],
+            "trades_today":self.trades_opened_today,"max_trades":self.config["MAX_TRADES_DAY"],
             "daily_pnl":round(self.daily_pnl,2),"max_daily_loss":round(ml,2),
             "consecutive_loss":self.consecutive_loss,"or_built":sum(1 for v in self.or_data.values() if v.get("built")),
             "active_signals":len(self.active_signals),"is_trade_time":self._is_trade_time(),
