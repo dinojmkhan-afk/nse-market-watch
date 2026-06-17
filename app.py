@@ -697,7 +697,7 @@ def fetch_nse_loop():
                     time.sleep(delay)
                     continue  # skip ORB processing this cycle; retry next iteration
                 fail_count=0
-                if r500.status_code!=200: continue
+                if r500.status_code!=200: time.sleep(5);continue
                 for item in r500.json().get("data",[]):
                     sym=item.get("symbol","")
                     if sym and sym in market_data:
@@ -791,7 +791,7 @@ def _apply_flattrade_token(token):
         mins_now=ist_now.hour*60+ist_now.minute
         if 8*60<=mins_now<=15*60+30:
             strategy_active=True
-            if orb.trades_today==0 and orb.daily_pnl==0:orb.reset_daily()
+            if orb.trades_opened_today==0 and orb.daily_pnl==0:orb.reset_daily()
             if orb.trading_stopped:orb.trading_stopped=False;orb.stop_reason=""
             save_state(True)
             print(f"[Auth] Strategy AUTO-STARTED at {ist_now.strftime('%H:%M')}",flush=True)
@@ -972,7 +972,7 @@ def start_strategy():
     if 9*60<=mins<or_start:
         print(f"[APP] WARNING: Strategy started at {now.strftime('%H:%M')} — OR window opens soon at 9:15")
     strategy_active=True
-    if orb.trades_today==0 and orb.daily_pnl==0:orb.reset_daily()
+    if orb.trades_opened_today==0 and orb.daily_pnl==0:orb.reset_daily()
     # Clear trading_stopped so signals fire after manual restart (user is consciously overriding)
     if orb.trading_stopped:
         print(f"[APP] trading_stopped cleared on manual restart (was: {orb.stop_reason})")
